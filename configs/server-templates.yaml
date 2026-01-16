@@ -1,0 +1,15 @@
+templates:
+  minecraft-vanilla:
+    command: "java"
+    args:
+      - "-Xms{{.mem_min}}"
+      - "-Xmx{{.mem_max}}"
+      - "-jar"
+      - "{{.jar_path}}"
+      - "nogui"
+    cwd: "{{.instance_dir}}"
+    env: []
+    stop:
+      type: "stdin"
+      command: "stop\n"
+      grace_period: "15s"
