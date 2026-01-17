@@ -1,3 +1,16 @@
-*.jar
-logs
-data
+# Binaries
+bin/
+dist/
+
+# Logs / runtime data
+logs/
+data/
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+
+# Local override configs (recommended for contributors)
+configs/instances.yaml
+configs/agent.yaml

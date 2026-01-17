@@ -1,0 +1,49 @@
+name: Build Release Binaries
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: true
+
+      - name: Build binaries
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+
+          EXT=""
+          if [ "${GOOS}" = "windows" ]; then EXT=".exe"; fi
+
+          # agent
+          go build -trimpath -ldflags "-s -w" -o "dist/agent_${GOOS}_${GOARCH}${EXT}" ./cmd/agent
+
+          # command-server
+          go build -trimpath -ldflags "-s -w" -o "dist/command-server_${GOOS}_${GOARCH}${EXT}" ./cmd/command-server
+
+          # ctl
+          go build -trimpath -ldflags "-s -w" -o "dist/ctl_${GOOS}_${GOARCH}${EXT}" ./cmd/ctl
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

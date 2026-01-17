@@ -1,12 +1,12 @@
 # Remote Process Manager
 
-Remote Process Manager is a Go-based control plane + agent system for managing game servers (and other long-running processes) on remote machines.
+Remote Process Manager is a Go-based **control plane + agent** system for managing game servers (and other long-running processes) on remote machines.
 
 The key goals are:
 
 - **No port forwarding required** to your home network
 - Remote machines run an **agent** that connects outbound to a **command server**
-- A **control plane** (HTTP API) routes user/automation commands to the correct agent
+- A **control plane** (HTTP API) routes commands to the correct agent
 - Supports **server templates** + **multiple instances** per template
 - Supports start/stop/status/log collection for managed processes
 
@@ -44,7 +44,7 @@ This project is designed to grow into integrations such as Slack/Discord/Web UI 
 1. Agent boots, loads `server-templates.yaml` + `instances.yaml`
 2. Agent connects outbound to command-server TCP listener and registers:
    - `agent_id`
-   - instance list (currently called “servers” in protocol)
+   - instance list (currently called “servers” in the protocol)
 3. CLI calls command-server HTTP endpoints
 4. command-server relays commands over the active agent TCP connection
 5. agent executes commands and replies with results
@@ -78,8 +78,33 @@ internal/
 
 ## Requirements
 
-- Go **1.24+**
+- Go **1.24+** (for building from source)
 - A machine capable of running your desired game server process (Java, Valheim binary, etc.)
+
+---
+
+## Install
+
+### Option A: Download binaries from GitHub Releases (recommended)
+
+Each release publishes pre-built binaries for:
+
+- Linux / macOS / Windows
+- amd64 / arm64
+
+Binaries include:
+
+- `command-server_*`
+- `agent_*`
+- `ctl_*`
+
+Download the correct binaries for your platform from the latest GitHub Release.
+
+### Option B: Build from source
+
+```bash
+go build ./...
+```
 
 ---
 
@@ -170,6 +195,9 @@ Fields:
 - `template`: which template to use
 - `enabled`: if false, starting the instance will return an error
 - `params`: key/value parameters referenced by the template
+
+> Note: In a real deployment, `configs/instances.yaml` is machine-specific state.
+> Many users will want to **ignore it in git** and manage it via the CLI/control plane.
 
 ---
 
@@ -347,6 +375,33 @@ For others, you may need to pass explicit arguments or environment variables.
 
 ---
 
+## Releases
+
+This repo uses:
+
+- **Release Please** for versioning + changelog + GitHub Releases
+- A build workflow that compiles and uploads binaries for each release
+
+### How it works
+
+1. You merge Conventional Commits into `main`
+2. Release Please opens/updates a **Release PR**
+3. When the Release PR is merged:
+   - a git tag is created (e.g. `v0.2.0`)
+   - a GitHub Release is published
+4. The `Build Release Binaries` workflow runs and attaches binaries to the release
+
+### Commit conventions
+
+Examples:
+
+- `feat(agent): add instance create/delete`
+- `fix(command-server): handle agent re-register updates`
+- `feat(ctl): add instances list command`
+- `docs(readme): update usage examples`
+
+---
+
 ## Notes on Security (Current State)
 
 The current implementation focuses on functionality and development velocity.
@@ -383,4 +438,4 @@ For real deployment, the command server should be hardened with:
 
 ## License
 
-TBD
+MIT
