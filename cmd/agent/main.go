@@ -24,7 +24,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("[agent] failed to load agent config: %v", err)
 	}
-	templatesCfg, err := config.LoadTemplates("configs/server-templates.yaml")
+	templatesCfg, err := config.LoadTemplates("configs/instance-templates.yaml")
 	if err != nil {
 		log.Fatalf("[agent] failed to load templates config: %v", err)
 	}

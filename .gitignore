@@ -14,3 +14,4 @@ data/
 # Local override configs (recommended for contributors)
 configs/instances.yaml
 configs/agent.yaml
+server-binaries

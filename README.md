@@ -7,7 +7,7 @@ The key goals are:
 - **No port forwarding required** to your home network
 - Remote machines run an **agent** that connects outbound to a **command server**
 - A **control plane** (HTTP API) routes commands to the correct agent
-- Supports **server templates** + **multiple instances** per template
+- Supports **instance templates** + **multiple instances** per template
 - Supports start/stop/status/log collection for managed processes
 
 This project is designed to grow into integrations such as Slack/Discord/Web UI while keeping the core process management reliable and testable.
@@ -41,10 +41,10 @@ This project is designed to grow into integrations such as Slack/Discord/Web UI 
 
 ### Data Flow
 
-1. Agent boots, loads `server-templates.yaml` + `instances.yaml`
+1. Agent boots, loads `instance-templates.yaml` + `instances.yaml`
 2. Agent connects outbound to command-server TCP listener and registers:
    - `agent_id`
-   - instance list (currently called “servers” in the protocol)
+   - instance list
 3. CLI calls command-server HTTP endpoints
 4. command-server relays commands over the active agent TCP connection
 5. agent executes commands and replies with results
@@ -61,7 +61,7 @@ cmd/
 
 configs/
   agent.yaml            # agent identity + command server address
-  server-templates.yaml # templates (manually edited)
+  instance-templates.yaml # templates (manually edited)
   instances.yaml        # instance state (managed by control plane)
 
 internal/
@@ -124,7 +124,7 @@ command_server_addr: "127.0.0.1:9090"
 
 ---
 
-### 2) `configs/server-templates.yaml`
+### 2) `configs/instance-templates.yaml`
 
 Templates are **manually edited** and define how to run a class of server.
 

@@ -58,19 +58,20 @@ go run ./cmd/ctl agents
 ### Logging
 
 Prefer consistent log prefixes:
+
 - `[agent] ...`
 - `[command-server] ...`
 
 ### Configuration files
 
-- `configs/server-templates.yaml` is **manually edited** and should remain human-friendly.
+- `configs/instance-templates.yaml` is **manually edited** and should remain human-friendly.
 - `configs/instances.yaml` is **agent-managed state** and should be updated using the instance CRUD APIs when possible.
 
 ## Adding a new server type
 
 In most cases, adding a new game server requires **no code changes**:
 
-1. Add a template to `configs/server-templates.yaml`
+1. Add a template to `configs/instance-templates.yaml`
 2. Create an instance (via CLI):
    ```bash
    go run ./cmd/ctl instance-create <agentID> <name> <template> key=value ...
