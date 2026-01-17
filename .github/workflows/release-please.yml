@@ -9,11 +9,58 @@ permissions:
   pull-requests: write
 
 jobs:
-  release-please:
+  release:
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  build-and-upload:
+    needs: release
+    if: ${{ needs.release.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: true
+
+      - name: Build release binaries (cross-compile)
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+
+          build_one() {
+            GOOS="$1"
+            GOARCH="$2"
+            EXT=""
+            if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
+
+            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w" -o "dist/agent_${GOOS}_${GOARCH}${EXT}" ./cmd/agent
+            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w" -o "dist/command-server_${GOOS}_${GOARCH}${EXT}" ./cmd/command-server
+            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w" -o "dist/ctl_${GOOS}_${GOARCH}${EXT}" ./cmd/ctl
+          }
+
+          build_one linux amd64
+          build_one linux arm64
+          build_one darwin amd64
+          build_one darwin arm64
+          build_one windows amd64
+          build_one windows arm64
+
+      - name: Upload binaries to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.release.outputs.tag_name }}" dist/* --clobber
