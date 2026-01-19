@@ -44,18 +44,19 @@ jobs:
           build_one() {
             GOOS="$1"
             GOARCH="$2"
+            VERSION="$3"
             EXT=""
             if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
 
-            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w" -o "dist/agent_${GOOS}_${GOARCH}${EXT}" ./cmd/agent
-            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w" -o "dist/command-server_${GOOS}_${GOARCH}${EXT}" ./cmd/command-server
-            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w" -o "dist/ctl_${GOOS}_${GOARCH}${EXT}" ./cmd/ctl
+            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w" -o "dist/agent_${GOOS}_${GOARCH}${EXT}_${VERSION}" ./cmd/agent
+            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w" -o "dist/command-server_${GOOS}_${GOARCH}${EXT}_${VERSION}" ./cmd/command-server
+            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w" -o "dist/ctl_${GOOS}_${GOARCH}${EXT}_${VERSION}" ./cmd/ctl
           }
 
-          build_one linux amd64
-          build_one linux arm64
-          build_one darwin amd64
-          build_one darwin arm64
+          build_one linux amd64 ${{needs.release.outputs.tag_name}}
+          build_one linux arm64 ${{needs.release.outputs.tag_name}}
+          build_one darwin amd64 ${{needs.release.outputs.tag_name}}
+          build_one darwin arm64 ${{needs.release.outputs.tag_name}}
           # build_one windows amd64
           # build_one windows arm64
 
