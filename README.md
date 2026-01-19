@@ -8,7 +8,7 @@ The key goals are:
 - Remote machines run an **agent** that connects outbound to a **command server**
 - A **control plane** (HTTP API) routes commands to the correct agent
 - Supports **instance templates** + **multiple instances** per template
-- Supports start/stop/status/log collection for managed processes
+- Supports **instance lifecycle** (create/delete/start/stop/status) for managed processes
 
 This project is designed to grow into integrations such as Slack/Discord/Web UI while keeping the core process management reliable and testable.
 
@@ -19,7 +19,6 @@ This project is designed to grow into integrations such as Slack/Discord/Web UI 
 ### Components
 
 - **Agent** (`cmd/agent`)
-
   - Runs on the machine that hosts game servers
   - Reads configuration templates and instances
   - Connects outbound to the command server over TCP
@@ -27,7 +26,6 @@ This project is designed to grow into integrations such as Slack/Discord/Web UI 
   - Starts/stops processes locally via `internal/manager`
 
 - **Command Server** (`cmd/command-server`)
-
   - Runs in the cloud or any reachable host
   - Accepts outbound agent TCP connections
   - Maintains a registry of connected agents
@@ -38,6 +36,7 @@ This project is designed to grow into integrations such as Slack/Discord/Web UI 
   - Lists agents and instances
   - Creates/deletes instances
   - Starts/stops instances
+  - Lists/inspects templates
 
 ### Data Flow
 
@@ -57,12 +56,12 @@ This project is designed to grow into integrations such as Slack/Discord/Web UI 
 cmd/
   agent/                # runs on game host machine
   command-server/       # control plane + agent relay
-  ctl/                  # CLI client
+  ctl/                  # CLI client (Cobra-based)
 
 configs/
-  agent.yaml            # agent identity + command server address
+  agent.yaml              # agent identity + command server address
   instance-templates.yaml # templates (manually edited)
-  instances.yaml        # instance state (managed by control plane)
+  instances.yaml          # instance state (managed by control plane)
 
 internal/
   config/               # yaml loaders
@@ -89,7 +88,7 @@ internal/
 
 Each release publishes pre-built binaries for:
 
-- Linux / macOS / Windows
+- Linux / macOS
 - amd64 / arm64
 
 Binaries include:
@@ -99,6 +98,8 @@ Binaries include:
 - `ctl_*`
 
 Download the correct binaries for your platform from the latest GitHub Release.
+
+> Windows binaries are not published yet (planned).
 
 ### Option B: Build from source
 
@@ -230,131 +231,89 @@ The agent will connect to the command server and register its instances.
 
 ---
 
-### 3) Run CLI commands
+### 3) Use the CLI
 
 Terminal 3:
 
 ```bash
-go run ./cmd/ctl agents
+go run ./cmd/ctl -- agents
 ```
 
 ---
 
-## CLI Usage
+## CLI Cheatsheet
 
-The CLI talks to the command-server HTTP API.
-
-Set the command server URL:
+### Point the CLI at your command server
 
 ```bash
 export GAMESVC_URL="http://127.0.0.1:8080"
+# OR:
+gamesvcctl --url http://127.0.0.1:8080 agents
 ```
 
-### List connected agents
+### Help
+
+```bash
+gamesvcctl --help
+gamesvcctl instances --help
+gamesvcctl templates --help
+```
+
+### Agents
 
 ```bash
 gamesvcctl agents
 ```
 
-Example:
+### Instances
 
 ```bash
-go run ./cmd/ctl agents
+# list instances on an agent
+gamesvcctl instances list <agentID>
+
+# create an instance (params are key=value)
+gamesvcctl instances create <agentID> <name> <template> [key=value ...]
+
+# delete an instance
+gamesvcctl instances delete <agentID> <name> [--force] [--delete-data]
+
+# start/stop/status
+gamesvcctl instances start  <agentID> <instance>
+gamesvcctl instances stop   <agentID> <instance>
+gamesvcctl instances status <agentID> <instance>
 ```
 
----
-
-### List instances on an agent
+Examples:
 
 ```bash
-gamesvcctl instances <agentID>
-```
+gamesvcctl agents
+gamesvcctl instances list home-01
 
-Example:
-
-```bash
-go run ./cmd/ctl instances home-01
-```
-
----
-
-### Create an instance on an agent
-
-```bash
-gamesvcctl instance-create <agentID> <name> <template> [key=value ...]
-```
-
-Example:
-
-```bash
-go run ./cmd/ctl instance-create home-01 survival-2 minecraft-vanilla \
+gamesvcctl instances create home-01 survival-2 minecraft-vanilla \
   mem_min=2G mem_max=4G jar_path=/opt/minecraft/server.jar
+
+gamesvcctl instances start home-01 survival-2
+gamesvcctl instances status home-01 survival-2
+gamesvcctl instances stop home-01 survival-2
+
+gamesvcctl instances delete home-01 survival-2 --force --delete-data
 ```
 
-This will:
-
-- add the instance into `configs/instances.yaml` on the agent
-- create instance directories on disk (best effort)
-
----
-
-### Delete an instance
+### Templates
 
 ```bash
-gamesvcctl instance-delete <agentID> <name> [--force] [--delete-data]
+# list templates available on an agent
+gamesvcctl templates list <agentID>
+
+# inspect a single template
+gamesvcctl templates inspect <agentID> <templateName>
 ```
 
-Options:
-
-- `--force`: stop the instance first if running
-- `--delete-data`: remove the instance directory from disk
-
-Example:
+Examples:
 
 ```bash
-go run ./cmd/ctl instance-delete home-01 survival-2 --force --delete-data
-```
-
----
-
-### Start an instance
-
-```bash
-gamesvcctl start <agentID> <instance>
-```
-
-Example:
-
-```bash
-go run ./cmd/ctl start home-01 survival-1
-```
-
----
-
-### Stop an instance
-
-```bash
-gamesvcctl stop <agentID> <instance>
-```
-
-Example:
-
-```bash
-go run ./cmd/ctl stop home-01 survival-1
-```
-
----
-
-### Get status
-
-```bash
-gamesvcctl status <agentID> <instance>
-```
-
-Example:
-
-```bash
-go run ./cmd/ctl status home-01 survival-1
+gamesvcctl templates list home-01
+gamesvcctl templates inspect home-01 minecraft-vanilla
 ```
 
 ---
@@ -364,7 +323,6 @@ go run ./cmd/ctl status home-01 survival-1
 By default:
 
 - Instance working directory:
-
   - `data/instances/<instance-name>/`
 
 - Logs are written to:
@@ -397,7 +355,7 @@ Examples:
 
 - `feat(agent): add instance create/delete`
 - `fix(command-server): handle agent re-register updates`
-- `feat(ctl): add instances list command`
+- `feat(ctl): refactor CLI to cobra`
 - `docs(readme): update usage examples`
 
 ---
@@ -438,7 +396,7 @@ For real deployment, the command server should be hardened with:
   - STDIN reconnection
 - Control Server/Agent transport over gRPC (optional based on feature flags)
 - Process Plugin for custom server management
-- Windows support
+- Windows support (not supported yet)
 
 ---
 
