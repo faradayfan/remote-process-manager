@@ -33,7 +33,7 @@ func NewHandler(ctx AgentContext) *Handler {
 	return &Handler{Ctx: ctx}
 }
 
-func (h *Handler) SupportedServers() []string {
+func (h *Handler) SupportedInstances() []string {
 	// Protocol field is still called "servers", but values are instance names.
 	return h.Ctx.Instances.ListInstanceNames()
 }
@@ -102,29 +102,29 @@ func (h *Handler) Handle(ctx context.Context, msg protocol.Message) (protocol.Me
 		return h.replyOK(msg, states), nil
 
 	case protocol.CmdStatus:
-		tgt, err := decode[protocol.ServerTarget](msg)
+		tgt, err := decode[protocol.InstanceTarget](msg)
 		if err != nil {
 			return h.replyErr(msg, fmt.Errorf("bad payload: %w", err)), nil
 		}
 
-		return h.replyOK(msg, h.status(tgt.Server)), nil
+		return h.replyOK(msg, h.status(tgt.Instance)), nil
 
 	case protocol.CmdStart:
-		tgt, err := decode[protocol.ServerTarget](msg)
+		tgt, err := decode[protocol.InstanceTarget](msg)
 		if err != nil {
 			return h.replyErr(msg, fmt.Errorf("bad payload: %w", err)), nil
 		}
 
-		st, err := h.start(ctx, tgt.Server)
+		st, err := h.start(ctx, tgt.Instance)
 		return h.reply(msg, st, err), nil
 
 	case protocol.CmdStop:
-		tgt, err := decode[protocol.ServerTarget](msg)
+		tgt, err := decode[protocol.InstanceTarget](msg)
 		if err != nil {
 			return h.replyErr(msg, fmt.Errorf("bad payload: %w", err)), nil
 		}
 
-		st, err := h.stop(ctx, tgt.Server)
+		st, err := h.stop(ctx, tgt.Instance)
 		return h.reply(msg, st, err), nil
 
 	// --------------------

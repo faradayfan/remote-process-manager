@@ -424,7 +424,7 @@ For real deployment, the command server should be hardened with:
 
 ## Roadmap Ideas
 
-- Add `templates list` and `templates inspect` endpoints
+- (Done) Add `templates list` and `templates inspect` endpoints
 - Add instance update:
   - enable/disable
   - update params

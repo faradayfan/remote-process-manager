@@ -9,9 +9,9 @@ const (
 )
 
 type RegisterPayload struct {
-	Servers []string `json:"servers"`
+	Instances []string `json:"instances"`
 }
 
-type ServerTarget struct {
-	Server string `json:"server"`
+type InstanceTarget struct {
+	Instance string `json:"instance"`
 }

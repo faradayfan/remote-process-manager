@@ -14,7 +14,7 @@ import (
 
 type AgentInfo struct {
 	AgentID     string    `json:"agent_id"`
-	Servers     []string  `json:"servers"`
+	Instances   []string  `json:"instances"`
 	ConnectedAt time.Time `json:"connected_at"`
 	LastSeen    time.Time `json:"last_seen"`
 }
@@ -59,14 +59,14 @@ func (r *Registry) GetAgent(agentID string) (AgentInfo, bool) {
 	return a.info, true
 }
 
-func (r *Registry) RegisterAgent(agentID string, servers []string, c *transport.Conn) {
+func (r *Registry) RegisterAgent(agentID string, instances []string, c *transport.Conn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	r.agents[agentID] = &agentConn{
 		info: AgentInfo{
 			AgentID:     agentID,
-			Servers:     servers,
+			Instances:   instances,
 			ConnectedAt: time.Now().UTC(),
 			LastSeen:    time.Now().UTC(),
 		},
@@ -75,7 +75,7 @@ func (r *Registry) RegisterAgent(agentID string, servers []string, c *transport.
 	}
 }
 
-func (r *Registry) UpdateAgentServers(agentID string, servers []string) {
+func (r *Registry) UpdateAgentInstances(agentID string, instances []string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -83,7 +83,7 @@ func (r *Registry) UpdateAgentServers(agentID string, servers []string) {
 	if !ok {
 		return
 	}
-	a.info.Servers = servers
+	a.info.Instances = instances
 	a.info.LastSeen = time.Now().UTC()
 }
 

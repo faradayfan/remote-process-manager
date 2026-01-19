@@ -61,8 +61,8 @@ func (l *AgentListener) handleConn(c net.Conn) {
 		return
 	}
 
-	l.registry.RegisterAgent(first.AgentID, reg.Servers, tc)
-	log.Printf("[command-server] agent registered: %s servers=%v", first.AgentID, reg.Servers)
+	l.registry.RegisterAgent(first.AgentID, reg.Instances, tc)
+	log.Printf("[command-server] agent registered: %s instances=%v", first.AgentID, reg.Instances)
 
 	// Main loop reads responses from agent
 	for {
@@ -80,8 +80,8 @@ func (l *AgentListener) handleConn(c net.Conn) {
 		if msg.Kind == protocol.KindRegister && msg.AgentID != "" {
 			var reg protocol.RegisterPayload
 			if err := json.Unmarshal(msg.Payload, &reg); err == nil {
-				l.registry.UpdateAgentServers(msg.AgentID, reg.Servers)
-				log.Printf("[command-server] agent updated registration: %s servers=%v", msg.AgentID, reg.Servers)
+				l.registry.UpdateAgentInstances(msg.AgentID, reg.Instances)
+				log.Printf("[command-server] agent updated registration: %s instances=%v", msg.AgentID, reg.Instances)
 			}
 			continue
 		}

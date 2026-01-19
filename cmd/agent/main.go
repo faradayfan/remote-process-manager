@@ -123,7 +123,7 @@ func connectAndServe(ctx context.Context, agentID string, addr string, handler *
 
 	// Send register message first
 	regPayload := protocol.RegisterPayload{
-		Servers: handler.SupportedServers(),
+		Instances: handler.SupportedInstances(),
 	}
 
 	regMsg, err := protocol.NewRegister(agentID, regPayload)
@@ -138,14 +138,14 @@ func connectAndServe(ctx context.Context, agentID string, addr string, handler *
 	// If instance list changes, update the command server registry.
 	sendRegister := func() {
 		regPayload := protocol.RegisterPayload{
-			Servers: handler.SupportedServers(),
+			Instances: handler.SupportedInstances(),
 		}
 		regMsg, _ := protocol.NewRegister(agentID, regPayload)
 		_ = tc.Send(regMsg)
 	}
 	handler.OnInstanceListChanged = sendRegister
 
-	log.Printf("[agent] registered with command-server addr=%s servers=%v", addr, regPayload.Servers)
+	log.Printf("[agent] registered with command-server addr=%s instances=%v", addr, regPayload.Instances)
 
 	// Heartbeats keep the registry "fresh"
 	heartbeatStop := make(chan struct{})

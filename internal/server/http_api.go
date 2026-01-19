@@ -35,13 +35,13 @@ func (s *HTTPServer) Handler() http.Handler {
 
 	// Commands to agents (relay)
 	mux.HandleFunc("GET /v1/agents/{agentID}/instances", s.handleInstancesList)
-	mux.HandleFunc("GET /v1/agents/{agentID}/servers/{server}/status", s.handleStatus)
+	mux.HandleFunc("GET /v1/agents/{agentID}/instances/{instance}/status", s.handleInstanceStatus)
 	mux.HandleFunc("GET /v1/agents/{agentID}/templates", s.handleTemplatesList)
 	mux.HandleFunc("GET /v1/agents/{agentID}/templates/{templateName}", s.handleTemplatesInspect)
+	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{instance}/start", s.handleInstanceStart)
+	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{instance}/stop", s.handleInstanceStop)
 	mux.HandleFunc("POST /v1/agents/{agentID}/instances/create", s.handleInstancesCreate)
 	mux.HandleFunc("POST /v1/agents/{agentID}/instances/delete", s.handleInstancesDelete)
-	mux.HandleFunc("POST /v1/agents/{agentID}/servers/{server}/start", s.handleStart)
-	mux.HandleFunc("POST /v1/agents/{agentID}/servers/{server}/stop", s.handleStop)
 
 	// Health
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -78,36 +78,36 @@ func (s *HTTPServer) handleGetAgent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, info)
 }
 
-func (s *HTTPServer) handleStart(w http.ResponseWriter, r *http.Request) {
+func (s *HTTPServer) handleInstanceStart(w http.ResponseWriter, r *http.Request) {
 	s.command(w, r, protocol.CmdStart)
 }
 
-func (s *HTTPServer) handleStop(w http.ResponseWriter, r *http.Request) {
+func (s *HTTPServer) handleInstanceStop(w http.ResponseWriter, r *http.Request) {
 	s.command(w, r, protocol.CmdStop)
 }
 
-func (s *HTTPServer) handleStatus(w http.ResponseWriter, r *http.Request) {
+func (s *HTTPServer) handleInstanceStatus(w http.ResponseWriter, r *http.Request) {
 	s.command(w, r, protocol.CmdStatus)
 }
 
 func (s *HTTPServer) command(w http.ResponseWriter, r *http.Request, cmdType string) {
 	agentID := r.PathValue("agentID")
-	serverName := r.PathValue("server")
+	instanceName := r.PathValue("instance")
 
 	if agentID == "" {
 		writeErr(w, http.StatusBadRequest, "missing agentID")
 		return
 	}
-	if serverName == "" {
-		writeErr(w, http.StatusBadRequest, "missing server name")
+	if instanceName == "" {
+		writeErr(w, http.StatusBadRequest, "missing instance name")
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	resp, err := s.registry.SendCommand(ctx, agentID, cmdType, protocol.ServerTarget{
-		Server: serverName,
+	resp, err := s.registry.SendCommand(ctx, agentID, cmdType, protocol.InstanceTarget{
+		Instance: instanceName,
 	})
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -118,7 +118,7 @@ func (s *HTTPServer) command(w http.ResponseWriter, r *http.Request, cmdType str
 	if resp.Error != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"agent_id": agentID,
-			"server":   serverName,
+			"instance": instanceName,
 			"error":    resp.Error,
 		})
 		return
@@ -128,7 +128,7 @@ func (s *HTTPServer) command(w http.ResponseWriter, r *http.Request, cmdType str
 	if len(resp.Payload) == 0 {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"agent_id": agentID,
-			"server":   serverName,
+			"instance": instanceName,
 			"ok":       true,
 		})
 		return

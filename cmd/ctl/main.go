@@ -90,7 +90,7 @@ func run(argv []string) error {
 		}
 		agentID := args[0]
 		instance := args[1]
-		return api.PrintPOST(fmt.Sprintf("/agents/%s/servers/%s/start", url.PathEscape(agentID), url.PathEscape(instance)), nil)
+		return api.PrintPOST(fmt.Sprintf("/agents/%s/instances/%s/start", url.PathEscape(agentID), url.PathEscape(instance)), nil)
 
 	case "stop":
 		if len(args) != 2 {
@@ -98,7 +98,7 @@ func run(argv []string) error {
 		}
 		agentID := args[0]
 		instance := args[1]
-		return api.PrintPOST(fmt.Sprintf("/agents/%s/servers/%s/stop", url.PathEscape(agentID), url.PathEscape(instance)), nil)
+		return api.PrintPOST(fmt.Sprintf("/agents/%s/instances/%s/stop", url.PathEscape(agentID), url.PathEscape(instance)), nil)
 
 	case "status":
 		if len(args) != 2 {
@@ -106,7 +106,7 @@ func run(argv []string) error {
 		}
 		agentID := args[0]
 		instance := args[1]
-		return api.PrintGET(fmt.Sprintf("/agents/%s/servers/%s/status", url.PathEscape(agentID), url.PathEscape(instance)))
+		return api.PrintGET(fmt.Sprintf("/agents/%s/instances/%s/status", url.PathEscape(agentID), url.PathEscape(instance)))
 
 	case "templates":
 		if len(args) != 1 {
