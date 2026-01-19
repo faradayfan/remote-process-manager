@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/faradayfan/remote-process-manager/compare/v1.1.0...v1.2.0) (2026-01-19)
+
+
+### Features
+
+* instance list and inspect ([700f178](https://github.com/faradayfan/remote-process-manager/commit/700f1783a5c2ea0d6ed1861b44405d8a5db11066))
+
 ## [1.1.0](https://github.com/faradayfan/remote-process-manager/compare/v1.0.0...v1.1.0) (2026-01-17)
 
 
