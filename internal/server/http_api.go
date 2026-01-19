@@ -44,6 +44,8 @@ func (s *HTTPServer) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/agents/{agentID}/instances/delete", s.handleInstancesDelete)
 	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/enable", s.handleInstanceEnable)
 	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/disable", s.handleInstanceDisable)
+	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/params/set", s.handleInstanceParamsSet)
+	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/params/unset", s.handleInstanceParamsUnset)
 
 	// Health
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -327,6 +329,92 @@ func (s *HTTPServer) instanceToggleEnabled(w http.ResponseWriter, r *http.Reques
 	}
 
 	resp, err := s.registry.SendCommand(ctx, agentID, cmdType, req)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if resp.Error != "" {
+		writeErr(w, http.StatusBadRequest, resp.Error)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(resp.Payload)
+}
+
+func (s *HTTPServer) handleInstanceParamsSet(w http.ResponseWriter, r *http.Request) {
+	agentID := r.PathValue("agentID")
+	name := r.PathValue("name")
+
+	if agentID == "" {
+		writeErr(w, http.StatusBadRequest, "missing agentID")
+		return
+	}
+	if name == "" {
+		writeErr(w, http.StatusBadRequest, "missing instance name")
+		return
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json body (expected object of key/value pairs)")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	req := protocol.InstancesParamsSetRequest{
+		Name: name,
+		Set:  body,
+	}
+
+	resp, err := s.registry.SendCommand(ctx, agentID, protocol.CmdInstancesParamsSet, req)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if resp.Error != "" {
+		writeErr(w, http.StatusBadRequest, resp.Error)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(resp.Payload)
+}
+
+func (s *HTTPServer) handleInstanceParamsUnset(w http.ResponseWriter, r *http.Request) {
+	agentID := r.PathValue("agentID")
+	name := r.PathValue("name")
+
+	if agentID == "" {
+		writeErr(w, http.StatusBadRequest, "missing agentID")
+		return
+	}
+	if name == "" {
+		writeErr(w, http.StatusBadRequest, "missing instance name")
+		return
+	}
+
+	var body struct {
+		Unset []string `json:"unset"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	req := protocol.InstancesParamsUnsetRequest{
+		Name:  name,
+		Unset: body.Unset,
+	}
+
+	resp, err := s.registry.SendCommand(ctx, agentID, protocol.CmdInstancesParamsUnset, req)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
