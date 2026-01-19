@@ -292,7 +292,9 @@ gamesvcctl instances list home-01
 gamesvcctl instances create home-01 survival-2 minecraft-vanilla \
   mem_min=2G mem_max=4G jar_path=/opt/minecraft/server.jar
 
-gamesvcctl instances start home-01 survival-2
+gamesvcctl instances enable home-01 survival-2
+gamesvcctl instances disable home-01 survival-2
+
 gamesvcctl instances status home-01 survival-2
 gamesvcctl instances stop home-01 survival-2
 

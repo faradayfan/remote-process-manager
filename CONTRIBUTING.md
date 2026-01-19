@@ -52,15 +52,18 @@ Currently, there is no automated end-to-end test suite. You can manually test ch
 
 ```bash
 go run ./cmd/ctl agents
-go run ./cmd/ctl instances home-01
-go run ./cmd/ctl templates home-01
-go run ./cmd/ctl template home-01 minecraft-vanilla
-go run ./cmd/ctl instance-create home-01 survival-1 minecraft-vanilla mem_min=2G mem_max=4G jar_path=<path-to-minecraft-server-jar>
-go run ./cmd/ctl instances home-01
-go run ./cmd/ctl start home-01 survival-1
-go run ./cmd/ctl status home-01 survival-1
-go run ./cmd/ctl stop home-01 survival-1
-go run ./cmd/ctl instance-delete home-01 survival-1 --force --delete-data
+go run ./cmd/ctl instances list home-01
+go run ./cmd/ctl templates list home-01
+go run ./cmd/ctl templates inspect home-01 minecraft-vanilla
+go run ./cmd/ctl instances create home-01 survival-1 minecraft-vanilla mem_min=2G mem_max=4G jar_path=/opt/minecraft/server.jar
+go run ./cmd/ctl instances list home-01
+go run ./cmd/ctl instances disable home-01 survival-1
+go run ./cmd/ctl instances start home-01 survival-1 # confirm it doesn't start because it's disabled
+go run ./cmd/ctl instances enable home-01 survival-1
+go run ./cmd/ctl instances start home-01 survival-1
+go run ./cmd/ctl instances status home-01 survival-1
+go run ./cmd/ctl instances stop home-01 survival-1
+go run ./cmd/ctl instances delete home-01 survival-1 --force --delete-data
 ```
 
 ## Project conventions
