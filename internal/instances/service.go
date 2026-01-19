@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"text/template"
 
@@ -183,6 +184,47 @@ func (s *Service) SetEnabled(name string, enabled bool) error {
 	inst.Enabled = enabled
 	s.Instances[name] = inst
 
+	return s.Store.Save(s.Instances)
+}
+
+func (s *Service) SetParams(name string, updates map[string]string) error {
+	inst, ok := s.Instances[name]
+	if !ok {
+		return fmt.Errorf("instance not found: %s", name)
+	}
+	if inst.Params == nil {
+		inst.Params = map[string]string{}
+	}
+
+	for k, v := range updates {
+		if strings.TrimSpace(k) == "" {
+			continue
+		}
+		inst.Params[k] = v
+	}
+
+	s.Instances[name] = inst
+	return s.Store.Save(s.Instances)
+}
+
+func (s *Service) UnsetParams(name string, keys []string) error {
+	inst, ok := s.Instances[name]
+	if !ok {
+		return fmt.Errorf("instance not found: %s", name)
+	}
+	if inst.Params == nil {
+		inst.Params = map[string]string{}
+	}
+
+	for _, k := range keys {
+		k = strings.TrimSpace(k)
+		if k == "" {
+			continue
+		}
+		delete(inst.Params, k)
+	}
+
+	s.Instances[name] = inst
 	return s.Store.Save(s.Instances)
 }
 

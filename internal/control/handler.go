@@ -167,6 +167,42 @@ func (h *Handler) Handle(ctx context.Context, msg protocol.Message) (protocol.Me
 			"enabled": false,
 		}, nil)
 
+	case protocol.CmdInstancesParamsSet:
+		var req protocol.InstancesParamsSetRequest
+		if err := json.Unmarshal(msg.Payload, &req); err != nil {
+			resp, _ := protocol.NewResponse(h.Ctx.AgentID, msg.ID, nil, fmt.Errorf("bad payload: %w", err))
+			return resp, nil
+		}
+
+		if err := h.Ctx.Instances.SetParams(req.Name, req.Set); err != nil {
+			resp, _ := protocol.NewResponse(h.Ctx.AgentID, msg.ID, nil, err)
+			return resp, nil
+		}
+
+		return protocol.NewResponse(h.Ctx.AgentID, msg.ID, map[string]any{
+			"ok":   true,
+			"name": req.Name,
+			"set":  req.Set,
+		}, nil)
+
+	case protocol.CmdInstancesParamsUnset:
+		var req protocol.InstancesParamsUnsetRequest
+		if err := json.Unmarshal(msg.Payload, &req); err != nil {
+			resp, _ := protocol.NewResponse(h.Ctx.AgentID, msg.ID, nil, fmt.Errorf("bad payload: %w", err))
+			return resp, nil
+		}
+
+		if err := h.Ctx.Instances.UnsetParams(req.Name, req.Unset); err != nil {
+			resp, _ := protocol.NewResponse(h.Ctx.AgentID, msg.ID, nil, err)
+			return resp, nil
+		}
+
+		return protocol.NewResponse(h.Ctx.AgentID, msg.ID, map[string]any{
+			"ok":    true,
+			"name":  req.Name,
+			"unset": req.Unset,
+		}, nil)
+
 	// --------------------
 	// Templates
 	// --------------------
