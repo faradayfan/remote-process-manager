@@ -438,6 +438,7 @@ For real deployment, the command server should be hardened with:
   - STDIN reconnection
 - Control Server/Agent transport over gRPC (optional based on feature flags)
 - Process Plugin for custom server management
+- Windows support
 
 ---
 

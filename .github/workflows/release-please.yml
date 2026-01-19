@@ -56,8 +56,8 @@ jobs:
           build_one linux arm64
           build_one darwin amd64
           build_one darwin arm64
-          build_one windows amd64
-          build_one windows arm64
+          # build_one windows amd64
+          # build_one windows arm64
 
       - name: Upload binaries to GitHub Release
         env:
