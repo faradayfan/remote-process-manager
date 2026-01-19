@@ -30,16 +30,18 @@ func (s *HTTPServer) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	// Agent registry
-	mux.HandleFunc("GET /agents", s.handleListAgents)
-	mux.HandleFunc("GET /agents/{agentID}", s.handleGetAgent)
+	mux.HandleFunc("GET /v1/agents", s.handleListAgents)
+	mux.HandleFunc("GET /v1/agents/{agentID}", s.handleGetAgent)
 
 	// Commands to agents (relay)
-	mux.HandleFunc("POST /agents/{agentID}/servers/{server}/start", s.handleStart)
-	mux.HandleFunc("POST /agents/{agentID}/servers/{server}/stop", s.handleStop)
-	mux.HandleFunc("GET /agents/{agentID}/servers/{server}/status", s.handleStatus)
-	mux.HandleFunc("GET /agents/{agentID}/instances", s.handleInstancesList)
-	mux.HandleFunc("POST /agents/{agentID}/instances/create", s.handleInstancesCreate)
-	mux.HandleFunc("POST /agents/{agentID}/instances/delete", s.handleInstancesDelete)
+	mux.HandleFunc("GET /v1/agents/{agentID}/instances", s.handleInstancesList)
+	mux.HandleFunc("GET /v1/agents/{agentID}/servers/{server}/status", s.handleStatus)
+	mux.HandleFunc("GET /v1/agents/{agentID}/templates", s.handleTemplatesList)
+	mux.HandleFunc("GET /v1/agents/{agentID}/templates/{templateName}", s.handleTemplatesInspect)
+	mux.HandleFunc("POST /v1/agents/{agentID}/instances/create", s.handleInstancesCreate)
+	mux.HandleFunc("POST /v1/agents/{agentID}/instances/delete", s.handleInstancesDelete)
+	mux.HandleFunc("POST /v1/agents/{agentID}/servers/{server}/start", s.handleStart)
+	mux.HandleFunc("POST /v1/agents/{agentID}/servers/{server}/stop", s.handleStop)
 
 	// Health
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -220,6 +222,69 @@ func (s *HTTPServer) handleInstancesDelete(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(resp.Payload)
+}
+
+func (s *HTTPServer) handleTemplatesList(w http.ResponseWriter, r *http.Request) {
+	agentID := r.PathValue("agentID")
+	if agentID == "" {
+		writeErr(w, http.StatusBadRequest, "missing agentID")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	// Send an empty object payload (not nil) for consistency
+	resp, err := s.registry.SendCommand(ctx, agentID, protocol.CmdTemplatesList, map[string]any{})
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if resp.Error != "" {
+		writeErr(w, http.StatusBadRequest, resp.Error)
+		return
+	}
+
+	// Raw JSON from agent
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(resp.Payload)
+}
+
+func (s *HTTPServer) handleTemplatesInspect(w http.ResponseWriter, r *http.Request) {
+	agentID := r.PathValue("agentID")
+	if agentID == "" {
+		writeErr(w, http.StatusBadRequest, "missing agentID")
+		return
+	}
+
+	templateName := r.PathValue("templateName")
+	if templateName == "" {
+		writeErr(w, http.StatusBadRequest, "missing templateName")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	req := protocol.TemplatesInspectRequest{
+		Name: templateName,
+	}
+
+	resp, err := s.registry.SendCommand(ctx, agentID, protocol.CmdTemplatesInspect, req)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if resp.Error != "" {
+		writeErr(w, http.StatusBadRequest, resp.Error)
+		return
+	}
+
+	// Raw JSON from agent
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(resp.Payload)

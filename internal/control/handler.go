@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
+	"github.com/faradayfan/remote-process-manager/internal/config"
 	"github.com/faradayfan/remote-process-manager/internal/instances"
 	"github.com/faradayfan/remote-process-manager/internal/protocol"
 )
@@ -124,6 +126,48 @@ func (h *Handler) Handle(ctx context.Context, msg protocol.Message) (protocol.Me
 
 		st, err := h.stop(ctx, tgt.Server)
 		return h.reply(msg, st, err), nil
+
+	// --------------------
+	// Templates
+	// --------------------
+	case protocol.CmdTemplatesList:
+		cfg, err := config.LoadTemplates(h.Ctx.TemplatesConfigPath)
+		if err != nil {
+			return h.replyErr(msg, err), nil
+		}
+
+		names := make([]string, 0, len(cfg.Templates))
+		for name := range cfg.Templates {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+
+		return h.replyOK(msg, map[string]any{
+			"templates": names,
+		}), nil
+
+	case protocol.CmdTemplatesInspect:
+		req, err := decode[protocol.TemplatesInspectRequest](msg)
+		if err != nil {
+			return h.replyErr(msg, fmt.Errorf("bad payload: %w", err)), nil
+		}
+		if req.Name == "" {
+			return h.replyErr(msg, fmt.Errorf("name is required")), nil
+		}
+
+		cfg, err := config.LoadTemplates(h.Ctx.TemplatesConfigPath)
+		if err != nil {
+			return h.replyErr(msg, err), nil
+		}
+
+		tpl, ok := cfg.Templates[req.Name]
+		if !ok {
+			return h.replyErr(msg, fmt.Errorf("template %q not found", req.Name)), nil
+		}
+		return h.replyOK(msg, map[string]any{
+			"name":     req.Name,
+			"template": tpl,
+		}), nil
 
 	default:
 		return h.replyErr(msg, fmt.Errorf("unknown command type: %s", msg.Type)), nil

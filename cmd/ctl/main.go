@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -14,32 +16,40 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 {
+	if err := run(os.Args); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run(argv []string) error {
+	if len(argv) < 2 {
 		usage()
-		os.Exit(2)
+		return errors.New("missing command")
 	}
 
 	baseURL := getenvDefault("GAMESVC_URL", "http://127.0.0.1:8080")
-	client := &http.Client{Timeout: 10 * time.Second}
+	apiPrefix := "/v1" // ✅ enforce consistent API prefix
 
-	cmd := os.Args[1]
-	args := os.Args[2:]
+	client := &http.Client{Timeout: 10 * time.Second}
+	api := NewAPI(client, baseURL, apiPrefix)
+
+	cmd := argv[1]
+	args := argv[2:]
 
 	switch cmd {
 	case "agents":
-		doGET(client, baseURL+"/agents")
+		return api.PrintGET("/agents")
 
 	case "instances":
 		if len(args) != 1 {
-			fmt.Println("instances requires: <agentID>")
-			os.Exit(2)
+			return fmt.Errorf("instances requires: <agentID>")
 		}
-		doGET(client, fmt.Sprintf("%s/agents/%s/instances", baseURL, args[0]))
+		return api.PrintGET(fmt.Sprintf("/agents/%s/instances", url.PathEscape(args[0])))
 
 	case "instance-create":
 		if len(args) < 3 {
-			fmt.Println("instance-create requires: <agentID> <name> <template> [key=value ...]")
-			os.Exit(2)
+			return fmt.Errorf("instance-create requires: <agentID> <name> <template> [key=value ...]")
 		}
 
 		agentID := args[0]
@@ -54,12 +64,11 @@ func main() {
 			Params:   params,
 		}
 
-		doPOST(client, fmt.Sprintf("%s/agents/%s/instances/create", baseURL, agentID), req)
+		return api.PrintPOST(fmt.Sprintf("/agents/%s/instances/create", url.PathEscape(agentID)), req)
 
 	case "instance-delete":
 		if len(args) < 2 {
-			fmt.Println("instance-delete requires: <agentID> <name> [--force] [--delete-data]")
-			os.Exit(2)
+			return fmt.Errorf("instance-delete requires: <agentID> <name> [--force] [--delete-data]")
 		}
 
 		agentID := args[0]
@@ -73,39 +82,54 @@ func main() {
 			DeleteData: deleteData,
 		}
 
-		doPOST(client, fmt.Sprintf("%s/agents/%s/instances/delete", baseURL, agentID), req)
+		return api.PrintPOST(fmt.Sprintf("/agents/%s/instances/delete", url.PathEscape(agentID)), req)
 
 	case "start":
 		if len(args) != 2 {
-			fmt.Println("start requires: <agentID> <instance>")
-			os.Exit(2)
+			return fmt.Errorf("start requires: <agentID> <instance>")
 		}
 		agentID := args[0]
 		instance := args[1]
-		doPOST(client, fmt.Sprintf("%s/agents/%s/servers/%s/start", baseURL, agentID, instance), nil)
+		return api.PrintPOST(fmt.Sprintf("/agents/%s/servers/%s/start", url.PathEscape(agentID), url.PathEscape(instance)), nil)
 
 	case "stop":
 		if len(args) != 2 {
-			fmt.Println("stop requires: <agentID> <instance>")
-			os.Exit(2)
+			return fmt.Errorf("stop requires: <agentID> <instance>")
 		}
 		agentID := args[0]
 		instance := args[1]
-		doPOST(client, fmt.Sprintf("%s/agents/%s/servers/%s/stop", baseURL, agentID, instance), nil)
+		return api.PrintPOST(fmt.Sprintf("/agents/%s/servers/%s/stop", url.PathEscape(agentID), url.PathEscape(instance)), nil)
 
 	case "status":
 		if len(args) != 2 {
-			fmt.Println("status requires: <agentID> <instance>")
-			os.Exit(2)
+			return fmt.Errorf("status requires: <agentID> <instance>")
 		}
 		agentID := args[0]
 		instance := args[1]
-		doGET(client, fmt.Sprintf("%s/agents/%s/servers/%s/status", baseURL, agentID, instance))
+		return api.PrintGET(fmt.Sprintf("/agents/%s/servers/%s/status", url.PathEscape(agentID), url.PathEscape(instance)))
+
+	case "templates":
+		if len(args) != 1 {
+			return fmt.Errorf("templates requires: <agentID>")
+		}
+		agentID := args[0]
+		return api.PrintGET(fmt.Sprintf("/agents/%s/templates", url.PathEscape(agentID)))
+
+	case "template":
+		if len(args) != 2 {
+			return fmt.Errorf("template requires: <agentID> <templateName>")
+		}
+		agentID := args[0]
+		name := args[1]
+		return api.PrintGET(fmt.Sprintf("/agents/%s/templates/%s", url.PathEscape(agentID), url.PathEscape(name)))
+
+	case "help", "-h", "--help":
+		usage()
+		return nil
 
 	default:
-		fmt.Printf("unknown command: %s\n", cmd)
 		usage()
-		os.Exit(2)
+		return fmt.Errorf("unknown command: %s", cmd)
 	}
 }
 
@@ -122,6 +146,9 @@ Usage:
   gamesvcctl stop   <agentID> <instance>
   gamesvcctl status <agentID> <instance>
 
+  gamesvcctl templates <agentID>                 List templates
+  gamesvcctl template  <agentID> <templateName>  Inspect one template
+
 Environment:
   GAMESVC_URL=http://127.0.0.1:8080
 `))
@@ -135,53 +162,98 @@ func getenvDefault(k, def string) string {
 	return v
 }
 
-func doGET(client *http.Client, url string) {
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		fatal(err)
-	}
+//
+// API client
+//
 
-	res, err := client.Do(req)
-	if err != nil {
-		fatal(err)
-	}
-	defer res.Body.Close()
+type API struct {
+	client    *http.Client
+	baseURL   string
+	apiPrefix string
+}
 
-	body, _ := io.ReadAll(res.Body)
-	fmt.Printf("%s\n", prettyJSON(body))
-	if res.StatusCode >= 400 {
-		os.Exit(1)
+func NewAPI(client *http.Client, baseURL, apiPrefix string) *API {
+	return &API{
+		client:    client,
+		baseURL:   strings.TrimRight(baseURL, "/"),
+		apiPrefix: apiPrefix,
 	}
 }
 
-func doPOST(client *http.Client, url string, payload any) {
+func (a *API) url(path string) string {
+	// path should begin with "/..."
+	return a.baseURL + a.apiPrefix + path
+}
+
+func (a *API) PrintGET(path string) error {
+	body, status, err := a.GET(path)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s\n", prettyJSON(body))
+	if status >= 400 {
+		return fmt.Errorf("request failed: HTTP %d", status)
+	}
+	return nil
+}
+
+func (a *API) PrintPOST(path string, payload any) error {
+	body, status, err := a.POST(path, payload)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s\n", prettyJSON(body))
+	if status >= 400 {
+		return fmt.Errorf("request failed: HTTP %d", status)
+	}
+	return nil
+}
+
+func (a *API) GET(path string) ([]byte, int, error) {
+	req, err := http.NewRequest("GET", a.url(path), nil)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	res, err := a.client.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer res.Body.Close()
+
+	b, _ := io.ReadAll(res.Body)
+	return b, res.StatusCode, nil
+}
+
+func (a *API) POST(path string, payload any) ([]byte, int, error) {
 	var body io.Reader
 	if payload != nil {
 		b, err := json.Marshal(payload)
 		if err != nil {
-			fatal(err)
+			return nil, 0, err
 		}
 		body = bytes.NewReader(b)
 	}
 
-	req, err := http.NewRequest("POST", url, body)
+	req, err := http.NewRequest("POST", a.url(path), body)
 	if err != nil {
-		fatal(err)
+		return nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	res, err := client.Do(req)
+	res, err := a.client.Do(req)
 	if err != nil {
-		fatal(err)
+		return nil, 0, err
 	}
 	defer res.Body.Close()
 
 	respBody, _ := io.ReadAll(res.Body)
-	fmt.Printf("%s\n", prettyJSON(respBody))
-	if res.StatusCode >= 400 {
-		os.Exit(1)
-	}
+	return respBody, res.StatusCode, nil
 }
+
+//
+// helpers
+//
 
 func prettyJSON(b []byte) string {
 	var v any
@@ -218,9 +290,4 @@ func hasFlag(args []string, flag string) bool {
 		}
 	}
 	return false
-}
-
-func fatal(err error) {
-	fmt.Printf("error: %v\n", err)
-	os.Exit(1)
 }
