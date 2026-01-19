@@ -42,6 +42,8 @@ func (s *HTTPServer) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{instance}/stop", s.handleInstanceStop)
 	mux.HandleFunc("POST /v1/agents/{agentID}/instances/create", s.handleInstancesCreate)
 	mux.HandleFunc("POST /v1/agents/{agentID}/instances/delete", s.handleInstancesDelete)
+	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/enable", s.handleInstanceEnable)
+	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/disable", s.handleInstanceDisable)
 
 	// Health
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -285,6 +287,55 @@ func (s *HTTPServer) handleTemplatesInspect(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Raw JSON from agent
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(resp.Payload)
+}
+
+func (s *HTTPServer) handleInstanceEnable(w http.ResponseWriter, r *http.Request) {
+	s.instanceToggleEnabled(w, r, true)
+}
+
+func (s *HTTPServer) handleInstanceDisable(w http.ResponseWriter, r *http.Request) {
+	s.instanceToggleEnabled(w, r, false)
+}
+
+func (s *HTTPServer) instanceToggleEnabled(w http.ResponseWriter, r *http.Request, enabled bool) {
+	agentID := r.PathValue("agentID")
+	name := r.PathValue("name")
+
+	if agentID == "" {
+		writeErr(w, http.StatusBadRequest, "missing agentID")
+		return
+	}
+	if name == "" {
+		writeErr(w, http.StatusBadRequest, "missing instance name")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	req := protocol.ToggleInstanceEnabledRequest{
+		Name:    name,
+		Enabled: enabled,
+	}
+
+	cmdType := protocol.CmdInstancesDisable
+	if enabled {
+		cmdType = protocol.CmdInstancesEnable
+	}
+
+	resp, err := s.registry.SendCommand(ctx, agentID, cmdType, req)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if resp.Error != "" {
+		writeErr(w, http.StatusBadRequest, resp.Error)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(resp.Payload)
