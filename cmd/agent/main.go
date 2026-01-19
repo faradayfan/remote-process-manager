@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net"
 	"os"
@@ -16,20 +17,31 @@ import (
 	"github.com/faradayfan/remote-process-manager/internal/transport"
 )
 
+const (
+	agentConfigPath     = "configs/agent.yaml"
+	templatesConfigPath = "configs/instance-templates.yaml"
+	instancesConfigPath = "configs/instances.yaml"
+)
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
+	// Root context that cancels on SIGINT/SIGTERM.
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	// Load agent settings (agent ID + server address)
-	agentCfg, err := config.LoadAgent("configs/agent.yaml")
+	agentCfg, err := config.LoadAgent(agentConfigPath)
 	if err != nil {
 		log.Fatalf("[agent] failed to load agent config: %v", err)
 	}
-	templatesCfg, err := config.LoadTemplates("configs/instance-templates.yaml")
+
+	templatesCfg, err := config.LoadTemplates(templatesConfigPath)
 	if err != nil {
 		log.Fatalf("[agent] failed to load templates config: %v", err)
 	}
 
-	store := instances.NewStore("configs/instances.yaml")
+	store := instances.NewStore(instancesConfigPath)
 
 	loadedInstances, err := store.Load()
 	if err != nil {
@@ -47,35 +59,50 @@ func main() {
 		"logs",
 	)
 
-	handler := control.NewHandler(agentCfg.AgentID, instSvc)
+	// Build a richer agent context for handlers.
+	agentCtx := control.AgentContext{
+		AgentID:             agentCfg.AgentID,
+		AgentConfigPath:     agentConfigPath,
+		TemplatesConfigPath: templatesConfigPath,
+		InstancesConfigPath: instancesConfigPath,
+		Instances:           instSvc,
+	}
+
+	handler := control.NewHandler(agentCtx)
 
 	log.Printf("[agent] starting agent_id=%s command_server=%s", agentCfg.AgentID, agentCfg.CommandServerAddr)
 
-	// Graceful shutdown support
-	stopCh := make(chan os.Signal, 1)
-	signal.Notify(stopCh, os.Interrupt, syscall.SIGTERM)
+	// Main connection loop with reconnect (runs until ctx is cancelled)
+	go runAgentLoop(ctx, agentCfg.AgentID, agentCfg.CommandServerAddr, handler)
 
-	// Main connection loop with reconnect
-	go func() {
-		runAgentLoop(agentCfg.AgentID, agentCfg.CommandServerAddr, handler)
-	}()
-
-	<-stopCh
+	<-ctx.Done()
 	log.Printf("[agent] shutting down (note: any running game servers will continue unless you stop them via command)")
 }
 
-func runAgentLoop(agentID string, addr string, handler *control.Handler) {
+func runAgentLoop(ctx context.Context, agentID string, addr string, handler *control.Handler) {
 	backoff := 1 * time.Second
 	maxBackoff := 30 * time.Second
 
 	for {
-		err := connectAndServe(agentID, addr, handler)
+		// Exit cleanly if shutting down
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		err := connectAndServe(ctx, agentID, addr, handler)
 		if err != nil {
 			log.Printf("[agent] connection ended: %v", err)
 		}
 
+		// Wait before reconnecting (but abort if shutting down)
 		log.Printf("[agent] reconnecting in %s...", backoff)
-		time.Sleep(backoff)
+		select {
+		case <-time.After(backoff):
+		case <-ctx.Done():
+			return
+		}
 
 		backoff *= 2
 		if backoff > maxBackoff {
@@ -84,8 +111,9 @@ func runAgentLoop(agentID string, addr string, handler *control.Handler) {
 	}
 }
 
-func connectAndServe(agentID string, addr string, handler *control.Handler) error {
-	c, err := net.Dial("tcp", addr)
+func connectAndServe(ctx context.Context, agentID string, addr string, handler *control.Handler) error {
+	dialer := net.Dialer{}
+	c, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return err
 	}
@@ -107,6 +135,7 @@ func connectAndServe(agentID string, addr string, handler *control.Handler) erro
 		return err
 	}
 
+	// If instance list changes, update the command server registry.
 	sendRegister := func() {
 		regPayload := protocol.RegisterPayload{
 			Servers: handler.SupportedServers(),
@@ -133,6 +162,8 @@ func connectAndServe(agentID string, addr string, handler *control.Handler) erro
 				})
 			case <-heartbeatStop:
 				return
+			case <-ctx.Done():
+				return
 			}
 		}
 	}()
@@ -140,6 +171,13 @@ func connectAndServe(agentID string, addr string, handler *control.Handler) erro
 
 	// Main loop: receive commands, execute, respond
 	for {
+		// If shutting down, stop reading/handling commands
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		msg, err := tc.Recv()
 		if err != nil {
 			return err
@@ -159,7 +197,7 @@ func connectAndServe(agentID string, addr string, handler *control.Handler) erro
 			continue
 		}
 
-		resp, err := handler.Handle(msg)
+		resp, err := handler.Handle(ctx, msg)
 		if err != nil {
 			// If handler couldn't even produce a response, we can still try to return one
 			fallback, _ := protocol.NewResponse(agentID, msg.ID, nil, err)
