@@ -174,6 +174,18 @@ func (s *Service) DeleteInstance(name string, force bool, deleteData bool) error
 	return nil
 }
 
+func (s *Service) SetEnabled(name string, enabled bool) error {
+	inst, ok := s.Instances[name]
+	if !ok {
+		return fmt.Errorf("instance not found: %s", name)
+	}
+
+	inst.Enabled = enabled
+	s.Instances[name] = inst
+
+	return s.Store.Save(s.Instances)
+}
+
 func (s *Service) ResolveConfig(instanceName string) (manager.ServerConfig, string, error) {
 	s.mu.Lock()
 	inst, ok := s.Instances[instanceName]

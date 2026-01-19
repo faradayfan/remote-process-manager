@@ -127,6 +127,46 @@ func (h *Handler) Handle(ctx context.Context, msg protocol.Message) (protocol.Me
 		st, err := h.stop(ctx, tgt.Instance)
 		return h.reply(msg, st, err), nil
 
+	case protocol.CmdInstancesEnable:
+		var req protocol.ToggleInstanceEnabledRequest
+		if err := json.Unmarshal(msg.Payload, &req); err != nil {
+			return protocol.NewResponse(h.Ctx.AgentID, msg.ID, nil, fmt.Errorf("bad payload: %w", err))
+		}
+
+		if err := h.Ctx.Instances.SetEnabled(req.Name, true); err != nil {
+			return protocol.NewResponse(h.Ctx.AgentID, msg.ID, nil, err)
+		}
+
+		if h.OnInstanceListChanged != nil {
+			h.OnInstanceListChanged()
+		}
+
+		return protocol.NewResponse(h.Ctx.AgentID, msg.ID, map[string]any{
+			"ok":      true,
+			"name":    req.Name,
+			"enabled": true,
+		}, nil)
+
+	case protocol.CmdInstancesDisable:
+		var req protocol.ToggleInstanceEnabledRequest
+		if err := json.Unmarshal(msg.Payload, &req); err != nil {
+			return protocol.NewResponse(h.Ctx.AgentID, msg.ID, nil, fmt.Errorf("bad payload: %w", err))
+		}
+
+		if err := h.Ctx.Instances.SetEnabled(req.Name, false); err != nil {
+			return protocol.NewResponse(h.Ctx.AgentID, msg.ID, nil, err)
+		}
+
+		if h.OnInstanceListChanged != nil {
+			h.OnInstanceListChanged()
+		}
+
+		return protocol.NewResponse(h.Ctx.AgentID, msg.ID, map[string]any{
+			"ok":      true,
+			"name":    req.Name,
+			"enabled": false,
+		}, nil)
+
 	// --------------------
 	// Templates
 	// --------------------
