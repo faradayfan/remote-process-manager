@@ -22,6 +22,7 @@ func newInstancesCmd() *cobra.Command {
 	cmd.AddCommand(newInstanceStartCmd())
 	cmd.AddCommand(newInstanceStatusCmd())
 	cmd.AddCommand(newInstanceStopCmd())
+	cmd.AddCommand(newInstanceParamsCmd())
 
 	return cmd
 }
@@ -166,6 +167,66 @@ func newInstanceDisableCmd() *cobra.Command {
 			agentID := url.PathEscape(args[0])
 			instance := url.PathEscape(args[1])
 			return api.PrintPOST(fmt.Sprintf("/agents/%s/instances/%s/disable", agentID, instance), map[string]any{})
+		},
+	}
+}
+
+func newInstanceParamsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "params",
+		Short: "Manage instance parameters",
+	}
+
+	cmd.AddCommand(newInstanceParamsSetCmd())
+	cmd.AddCommand(newInstanceParamsUnsetCmd())
+	return cmd
+}
+
+func newInstanceParamsSetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "set <agentID> <instance> key=value [key=value ...]",
+		Short: "Set or overwrite instance params (applies next start)",
+		Args:  cobra.MinimumNArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			api := GetAPI(cmd.Context())
+
+			agentID := url.PathEscape(args[0])
+			inst := url.PathEscape(args[1])
+			kvs := args[2:]
+
+			payload := parseKeyValues(kvs)
+			if len(payload) == 0 {
+				return fmt.Errorf("no valid key=value pairs provided")
+			}
+
+			return api.PrintPOST(
+				fmt.Sprintf("/agents/%s/instances/%s/params/set", agentID, inst),
+				payload,
+			)
+		},
+	}
+}
+
+func newInstanceParamsUnsetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "unset <agentID> <instance> key [key ...]",
+		Short: "Remove instance params (applies next start)",
+		Args:  cobra.MinimumNArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			api := GetAPI(cmd.Context())
+
+			agentID := url.PathEscape(args[0])
+			inst := url.PathEscape(args[1])
+			keys := args[2:]
+
+			payload := map[string]any{
+				"unset": keys,
+			}
+
+			return api.PrintPOST(
+				fmt.Sprintf("/agents/%s/instances/%s/params/unset", agentID, inst),
+				payload,
+			)
 		},
 	}
 }
