@@ -61,9 +61,13 @@ go run ./cmd/ctl instances disable home-01 survival-1
 go run ./cmd/ctl instances start home-01 survival-1 # confirm it doesn't start because it's disabled
 go run ./cmd/ctl instances enable home-01 survival-1
 go run ./cmd/ctl instances start home-01 survival-1
+go run ./cmd/ctl instances rename home-01 survival-1 survival-world # confirm it wont rename while running
 go run ./cmd/ctl instances status home-01 survival-1
 go run ./cmd/ctl instances stop home-01 survival-1
-go run ./cmd/ctl instances delete home-01 survival-1 --force --delete-data
+go run ./cmd/ctl instances rename home-01 survival-1 survival-world
+go run ./cmd/ctl instances start home-01 survival-world
+go run ./cmd/ctl instances stop home-01 survival-world
+go run ./cmd/ctl instances delete home-01 survival-world --force --delete-data
 ```
 
 ## Project conventions

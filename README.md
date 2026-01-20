@@ -8,7 +8,7 @@ The key goals are:
 - Remote machines run an **agent** that connects outbound to a **command server**
 - A **control plane** (HTTP API) routes commands to the correct agent
 - Supports **instance templates** + **multiple instances** per template
-- Supports **instance lifecycle** (create/delete/start/stop/status) for managed processes
+- Supports **instance lifecycle + updates** (create/delete/start/stop/status/enable/disable/params/rename)
 
 This project is designed to grow into integrations such as Slack/Discord/Web UI while keeping the core process management reliable and testable.
 
@@ -36,6 +36,7 @@ This project is designed to grow into integrations such as Slack/Discord/Web UI 
   - Lists agents and instances
   - Creates/deletes instances
   - Starts/stops instances
+  - Updates instance settings (enable/disable/params/rename)
   - Lists/inspects templates
 
 ### Data Flow
@@ -197,7 +198,7 @@ Fields:
 - `enabled`: if false, starting the instance will return an error
 - `params`: key/value parameters referenced by the template
 
-> Note: In a real deployment, `configs/instances.yaml` is machine-specific state.
+> Note: In a real deployment, `configs/instances.yaml` is machine-specific state.  
 > Many users will want to **ignore it in git** and manage it via the CLI/control plane.
 
 ---
@@ -256,6 +257,7 @@ gamesvcctl --url http://127.0.0.1:8080 agents
 ```bash
 gamesvcctl --help
 gamesvcctl instances --help
+gamesvcctl instances params --help
 gamesvcctl templates --help
 ```
 
@@ -277,6 +279,17 @@ gamesvcctl instances create <agentID> <name> <template> [key=value ...]
 # delete an instance
 gamesvcctl instances delete <agentID> <name> [--force] [--delete-data]
 
+# enable/disable (controls whether instance may be started)
+gamesvcctl instances enable  <agentID> <instance>
+gamesvcctl instances disable <agentID> <instance>
+
+# set/unset params (changes apply on next start)
+gamesvcctl instances params set   <agentID> <instance> key=value [key=value ...]
+gamesvcctl instances params unset <agentID> <instance> key [key ...]
+
+# rename an instance (must be stopped)
+gamesvcctl instances rename <agentID> <oldName> <newName>
+
 # start/stop/status
 gamesvcctl instances start  <agentID> <instance>
 gamesvcctl instances stop   <agentID> <instance>
@@ -289,16 +302,28 @@ Examples:
 gamesvcctl agents
 gamesvcctl instances list home-01
 
+# create and start
 gamesvcctl instances create home-01 survival-2 minecraft-vanilla \
   mem_min=2G mem_max=4G jar_path=/opt/minecraft/server.jar
 
-gamesvcctl instances enable home-01 survival-2
+gamesvcctl instances start home-01 survival-2
+gamesvcctl instances status home-01 survival-2
+
+# update params (next start)
+gamesvcctl instances params set home-01 survival-2 mem_max=6G
+gamesvcctl instances params unset home-01 survival-2 jar_path
+
+# disable (prevents starting; does not stop a running instance)
 gamesvcctl instances disable home-01 survival-2
 
-gamesvcctl instances status home-01 survival-2
+# stop, rename, and restart under the new name
 gamesvcctl instances stop home-01 survival-2
+gamesvcctl instances rename home-01 survival-2 survival-2a
+gamesvcctl instances enable home-01 survival-2a
+gamesvcctl instances start home-01 survival-2a
 
-gamesvcctl instances delete home-01 survival-2 --force --delete-data
+# cleanup
+gamesvcctl instances delete home-01 survival-2a --force --delete-data
 ```
 
 ### Templates
@@ -330,7 +355,7 @@ By default:
 - Logs are written to:
   - `logs/<instance-name>.log`
 
-Many servers can be configured to store their world/data under the working directory.
+Many servers can be configured to store their world/data under the working directory.  
 For others, you may need to pass explicit arguments or environment variables.
 
 ---
@@ -384,11 +409,12 @@ For real deployment, the command server should be hardened with:
 
 ## Roadmap Ideas
 
-- (Done) Add `templates list` and `templates inspect` endpoints
-- Add instance update:
-  - enable/disable
-  - update params
-  - rename
+- Add template management:
+  - create/update/delete templates via control plane
+  - prevent deletes when instances reference a template
+- Add instance update refinements:
+  - validate required params for template before start
+  - optional restart flag for param updates
 - Automatic port allocation
 - Log tailing via control plane
 - AuthN/AuthZ + TLS/mTLS
