@@ -23,6 +23,7 @@ func newInstancesCmd() *cobra.Command {
 	cmd.AddCommand(newInstanceStatusCmd())
 	cmd.AddCommand(newInstanceStopCmd())
 	cmd.AddCommand(newInstanceParamsCmd())
+	cmd.AddCommand(newInstanceRenameCmd())
 
 	return cmd
 }
@@ -225,6 +226,30 @@ func newInstanceParamsUnsetCmd() *cobra.Command {
 
 			return api.PrintPOST(
 				fmt.Sprintf("/agents/%s/instances/%s/params/unset", agentID, inst),
+				payload,
+			)
+		},
+	}
+}
+
+func newInstanceRenameCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "rename <agentID> <oldName> <newName>",
+		Short: "Rename an instance (must be stopped)",
+		Args:  cobra.ExactArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			api := GetAPI(cmd.Context())
+
+			agentID := url.PathEscape(args[0])
+			oldName := url.PathEscape(args[1])
+			newName := args[2]
+
+			payload := map[string]any{
+				"new_name": newName,
+			}
+
+			return api.PrintPOST(
+				fmt.Sprintf("/agents/%s/instances/%s/rename", agentID, oldName),
 				payload,
 			)
 		},
