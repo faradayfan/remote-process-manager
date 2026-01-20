@@ -1,2 +1,8 @@
 agent_id: "home-01"
 command_server_addr: "127.0.0.1:9090"
+
+tls:
+  ca_file: "configs/certs/ca.crt"
+  cert_file: "configs/certs/agents/home-01.crt"
+  key_file: "configs/certs/agents/home-01.key"
+  server_name: "command-server"

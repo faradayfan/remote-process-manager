@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -9,28 +10,43 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/faradayfan/remote-process-manager/internal/config"
 	"github.com/faradayfan/remote-process-manager/internal/server"
 )
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
-	// Shared in-memory registry of connected agents
+	var cfgPath string
+	flag.StringVar(&cfgPath, "config", "configs/command-server.yaml", "path to command-server config file")
+	flag.Parse()
+
+	cfg, err := config.LoadCommandServer(cfgPath)
+	if err != nil {
+		log.Fatalf("[command-server] failed to load config: %v", err)
+	}
+
 	reg := server.NewRegistry()
 
-	// 1) TCP listener for agents (outbound agent -> cloud)
-	agentAddr := "0.0.0.0:9090"
-	agentListener := server.NewAgentListener(agentAddr, reg)
+	tlsCfg, err := server.BuildMTLSServerConfig(
+		cfg.TLS.CAFile,
+		cfg.TLS.CertFile,
+		cfg.TLS.KeyFile,
+	)
+	if err != nil {
+		log.Fatalf("[command-server] failed to build mTLS config: %v", err)
+	}
+
+	agentListener := server.NewAgentListener(cfg.TCPAddr, reg, tlsCfg, cfg.TLS.AllowedAgents)
 
 	go func() {
+		log.Printf("[command-server] agent listener starting on %s", cfg.TCPAddr)
 		if err := agentListener.ListenAndServe(); err != nil {
 			log.Fatalf("[command-server] agent listener failed: %v", err)
 		}
 	}()
 
-	// 2) HTTP API for CLI/users (cloud control plane)
-	httpAddr := "0.0.0.0:8080"
-	api := server.NewHTTPServer(httpAddr, reg)
+	api := server.NewHTTPServer(cfg.HTTPAddr, reg)
 
 	httpSrv := &http.Server{
 		Addr:    api.Addr(),
@@ -44,7 +60,6 @@ func main() {
 		}
 	}()
 
-	// shutdown handling
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	sig := <-sigCh

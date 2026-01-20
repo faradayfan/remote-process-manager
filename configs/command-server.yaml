@@ -1,0 +1,9 @@
+tcp_addr: "0.0.0.0:9090"
+http_addr: "0.0.0.0:8080"
+
+tls:
+  ca_file: "configs/certs/ca.crt"
+  cert_file: "configs/certs/server.crt"
+  key_file: "configs/certs/server.key"
+  allowed_agents:
+    - "home-01"

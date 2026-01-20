@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -34,6 +37,17 @@ func main() {
 	agentCfg, err := config.LoadAgent(agentConfigPath)
 	if err != nil {
 		log.Fatalf("[agent] failed to load agent config: %v", err)
+	}
+
+	// Build TLS config for mTLS connection to command-server
+	tlsCfg, err := buildMTLSClientConfig(
+		agentCfg.TLS.CAFile,
+		agentCfg.TLS.CertFile,
+		agentCfg.TLS.KeyFile,
+		agentCfg.TLS.ServerName,
+	)
+	if err != nil {
+		log.Fatalf("[agent] failed to build mTLS config: %v", err)
 	}
 
 	templatesCfg, err := config.LoadTemplates(templatesConfigPath)
@@ -70,16 +84,20 @@ func main() {
 
 	handler := control.NewHandler(agentCtx)
 
-	log.Printf("[agent] starting agent_id=%s command_server=%s", agentCfg.AgentID, agentCfg.CommandServerAddr)
+	log.Printf(
+		"[agent] starting agent_id=%s command_server=%s (mTLS enabled)",
+		agentCfg.AgentID,
+		agentCfg.CommandServerAddr,
+	)
 
 	// Main connection loop with reconnect (runs until ctx is cancelled)
-	go runAgentLoop(ctx, agentCfg.AgentID, agentCfg.CommandServerAddr, handler)
+	go runAgentLoop(ctx, agentCfg.AgentID, agentCfg.CommandServerAddr, tlsCfg, handler)
 
 	<-ctx.Done()
 	log.Printf("[agent] shutting down (note: any running game servers will continue unless you stop them via command)")
 }
 
-func runAgentLoop(ctx context.Context, agentID string, addr string, handler *control.Handler) {
+func runAgentLoop(ctx context.Context, agentID string, addr string, tlsCfg *tls.Config, handler *control.Handler) {
 	backoff := 1 * time.Second
 	maxBackoff := 30 * time.Second
 
@@ -91,7 +109,7 @@ func runAgentLoop(ctx context.Context, agentID string, addr string, handler *con
 		default:
 		}
 
-		err := connectAndServe(ctx, agentID, addr, handler)
+		err := connectAndServe(ctx, agentID, addr, tlsCfg, handler)
 		if err != nil {
 			log.Printf("[agent] connection ended: %v", err)
 		}
@@ -111,8 +129,13 @@ func runAgentLoop(ctx context.Context, agentID string, addr string, handler *con
 	}
 }
 
-func connectAndServe(ctx context.Context, agentID string, addr string, handler *control.Handler) error {
-	dialer := net.Dialer{}
+func connectAndServe(ctx context.Context, agentID string, addr string, tlsCfg *tls.Config, handler *control.Handler) error {
+	// Use TLS dialer instead of plain TCP
+	dialer := &tls.Dialer{
+		NetDialer: &net.Dialer{},
+		Config:    tlsCfg,
+	}
+
 	c, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return err
@@ -209,4 +232,39 @@ func connectAndServe(ctx context.Context, agentID string, addr string, handler *
 			return err
 		}
 	}
+}
+
+// buildMTLSClientConfig builds a TLS config for agent -> command-server mTLS.
+// - Verifies the server cert using caFile
+// - Presents the agent's client cert/key
+// - Optionally verifies the server hostname using serverName
+func buildMTLSClientConfig(caFile, certFile, keyFile, serverName string) (*tls.Config, error) {
+	caPEM, err := os.ReadFile(caFile)
+	if err != nil {
+		return nil, fmt.Errorf("read tls.ca_file %q: %w", caFile, err)
+	}
+
+	caPool := x509.NewCertPool()
+	if ok := caPool.AppendCertsFromPEM(caPEM); !ok {
+		return nil, fmt.Errorf("failed to parse CA certs from %q", caFile)
+	}
+
+	clientCert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("load tls.cert_file/tls.key_file %q/%q: %w", certFile, keyFile, err)
+	}
+
+	cfg := &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		RootCAs:      caPool,
+		Certificates: []tls.Certificate{clientCert},
+	}
+
+	// Strongly recommended in real deployments:
+	// this enables hostname verification against the server certificate SAN.
+	if serverName != "" {
+		cfg.ServerName = serverName
+	}
+
+	return cfg, nil
 }

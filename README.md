@@ -2,52 +2,45 @@
 
 Remote Process Manager is a Go-based **control plane + agent** system for managing game servers (and other long-running processes) on remote machines.
 
-The key goals are:
+## Why this exists
 
-- **No port forwarding required** to your home network
+- **No port forwarding** required to your home network
 - Remote machines run an **agent** that connects outbound to a **command server**
-- A **control plane** (HTTP API) routes commands to the correct agent
-- Supports **instance templates** + **multiple instances** per template
+- A **control plane (HTTP API)** routes commands to the correct agent
+- Supports **instance templates** and **many instances per template**
 - Supports **instance lifecycle + updates** (create/delete/start/stop/status/enable/disable/params/rename)
-
-This project is designed to grow into integrations such as Slack/Discord/Web UI while keeping the core process management reliable and testable.
+- Uses **mTLS** between agent and command server (URI SAN identity + allowlist)
 
 ---
 
-## Architecture Overview
+## Architecture
 
 ### Components
 
 - **Agent** (`cmd/agent`)
   - Runs on the machine that hosts game servers
-  - Reads configuration templates and instances
-  - Connects outbound to the command server over TCP
-  - Registers itself and listens for commands
+  - Loads templates + instances
+  - Connects outbound to the command server over TCP (**mTLS**)
   - Starts/stops processes locally via `internal/manager`
 
 - **Command Server** (`cmd/command-server`)
   - Runs in the cloud or any reachable host
-  - Accepts outbound agent TCP connections
+  - Accepts outbound agent connections (**mTLS**)
   - Maintains a registry of connected agents
   - Exposes an HTTP API that relays commands to agents
 
 - **CLI** (`cmd/ctl`)
   - Talks to the command server HTTP API
-  - Lists agents and instances
-  - Creates/deletes instances
-  - Starts/stops instances
-  - Updates instance settings (enable/disable/params/rename)
-  - Lists/inspects templates
+  - Lists agents / instances / templates
+  - Creates, deletes, and updates instances
 
-### Data Flow
+### Data flow
 
-1. Agent boots, loads `instance-templates.yaml` + `instances.yaml`
-2. Agent connects outbound to command-server TCP listener and registers:
-   - `agent_id`
-   - instance list
-3. CLI calls command-server HTTP endpoints
-4. command-server relays commands over the active agent TCP connection
-5. agent executes commands and replies with results
+1. Agent loads `instance-templates.yaml` and `instances.yaml`
+2. Agent connects outbound to the command server TCP listener and registers its instances
+3. CLI calls HTTP endpoints on the command server
+4. Command server relays a command over the active agent connection
+5. Agent executes the command and replies with the result
 
 ---
 
@@ -60,7 +53,8 @@ cmd/
   ctl/                  # CLI client (Cobra-based)
 
 configs/
-  agent.yaml              # agent identity + command server address
+  agent.yaml              # agent identity + command server address + mTLS client config
+  command-server.yaml     # command server listener config + mTLS allowlist
   instance-templates.yaml # templates (manually edited)
   instances.yaml          # instance state (managed by control plane)
 
@@ -70,7 +64,7 @@ internal/
   instances/            # template -> instance rendering + persistence
   manager/              # process spawning/stopping/status
   protocol/             # shared command schemas
-  server/               # command server registry + http api
+  server/               # command server registry + http api + agent listener
   transport/            # tcp json framing utilities
 ```
 
@@ -78,27 +72,25 @@ internal/
 
 ## Requirements
 
-- Go **1.24+** (for building from source)
-- A machine capable of running your desired game server process (Java, Valheim binary, etc.)
+- Go **1.24+**
+- A machine capable of running your desired server process (Java, Valheim binary, etc.)
 
 ---
 
 ## Install
 
-### Option A: Download binaries from GitHub Releases (recommended)
+### Option A: Download from GitHub Releases
 
-Each release publishes pre-built binaries for:
+Each release publishes binaries for:
 
 - Linux / macOS
 - amd64 / arm64
 
-Binaries include:
+Artifacts include:
 
 - `command-server_*`
 - `agent_*`
 - `ctl_*`
-
-Download the correct binaries for your platform from the latest GitHub Release.
 
 > Windows binaries are not published yet (planned).
 
@@ -112,32 +104,40 @@ go build ./...
 
 ## Configuration
 
-### 1) `configs/agent.yaml`
+### `configs/command-server.yaml`
 
-Defines the agent identity and where to connect:
+```yaml
+tcp_addr: "0.0.0.0:9090"
+http_addr: "0.0.0.0:8080"
+
+tls:
+  ca_file: "configs/certs/ca.crt"
+  cert_file: "configs/certs/server.crt"
+  key_file: "configs/certs/server.key"
+
+  # Allowlist of agents (derived from client cert URI SAN)
+  allowed_agents:
+    - "home-01"
+```
+
+### `configs/agent.yaml`
 
 ```yaml
 agent_id: "home-01"
 command_server_addr: "127.0.0.1:9090"
+
+tls:
+  ca_file: "configs/certs/ca.crt"
+  cert_file: "configs/certs/agents/home-01.crt"
+  key_file: "configs/certs/agents/home-01.key"
+
+  # Optional but recommended (must match a server DNS SAN)
+  server_name: "command-server"
 ```
 
-- `agent_id`: Stable identifier for the agent
-- `command_server_addr`: TCP address of the command-server agent listener
+### `configs/instance-templates.yaml`
 
----
-
-### 2) `configs/instance-templates.yaml`
-
-Templates are **manually edited** and define how to run a class of server.
-
-Templates can reference instance parameters using Go `text/template` syntax:
-
-- `{{.mem_min}}`
-- `{{.mem_max}}`
-- `{{.jar_path}}`
-- `{{.instance_dir}}` (built-in)
-- `{{.instance_name}}` (built-in)
-- `{{.log_path}}` (built-in)
+Templates define how to run a class of server. They support Go `text/template` substitution using instance params.
 
 Example (Minecraft Vanilla):
 
@@ -155,31 +155,18 @@ templates:
     env: []
     stop:
       type: "stdin"
-      command: "stop\n"
+      command: "stop"
       grace_period: "15s"
 ```
 
 Stop strategies:
 
-- **stdin**
-  - Sends a command over process stdin (defaults to `stop\n`)
-- **signal**
-  - Sends a POSIX signal (e.g. `SIGTERM`)
+- `stdin` (send a command like `stop`)
+- `signal` (send POSIX signal like `SIGTERM`)
 
-Example signal stop:
+### `configs/instances.yaml`
 
-```yaml
-stop:
-  type: "signal"
-  signal: "SIGTERM"
-  grace_period: "15s"
-```
-
----
-
-### 3) `configs/instances.yaml`
-
-Instances are **stored state** on the agent and are managed via control plane commands.
+Instances are stored state on the agent and are managed via CLI/control plane commands.
 
 ```yaml
 instances:
@@ -192,51 +179,72 @@ instances:
       jar_path: "/opt/minecraft/server.jar"
 ```
 
-Fields:
-
-- `template`: which template to use
-- `enabled`: if false, starting the instance will return an error
-- `params`: key/value parameters referenced by the template
-
-> Note: In a real deployment, `configs/instances.yaml` is machine-specific state.  
-> Many users will want to **ignore it in git** and manage it via the CLI/control plane.
-
 ---
 
-## Running Locally (Development)
+## mTLS Setup (Agent Trust)
 
-### 1) Start the command server
+The agent ↔ command-server TCP connection is protected with **mTLS**.
 
-Terminal 1:
+### Agent identity via URI SAN
 
-```bash
-go run ./cmd/command-server
+Agent certificates must include a URI SAN like:
+
+```
+spiffe://remote-process-manager/agent/<agent-id>
 ```
 
-By default it starts:
+Example:
 
-- Agent TCP listener: `0.0.0.0:9090`
-- HTTP API for CLI: `0.0.0.0:8080`
+```
+spiffe://remote-process-manager/agent/home-01
+```
+
+The command server extracts `<agent-id>` and enforces the allowlist in `configs/command-server.yaml`.
+
+### Generating certs
+
+This repo includes a helper script:
+
+```bash
+scripts/gen-certs.sh
+```
+
+Example (local dev):
+
+```bash
+chmod +x scripts/gen-certs.sh
+
+./scripts/gen-certs.sh all   --agent-id home-01   --server-dns command-server   --server-dns localhost   --server-ip 127.0.0.1
+```
+
+Generate more agents:
+
+```bash
+./scripts/gen-certs.sh gen-agent --agent-id garage-01
+```
+
+> You said you plan to gitignore the entire cert directory — that’s a good default. Do not commit private keys.
 
 ---
 
-### 2) Start the agent
+## Running Locally
 
-Terminal 2:
+Terminal 1 (command server):
+
+```bash
+go run ./cmd/command-server -config configs/command-server.yaml
+```
+
+Terminal 2 (agent):
 
 ```bash
 go run ./cmd/agent
 ```
 
-The agent will connect to the command server and register its instances.
-
----
-
-### 3) Use the CLI
-
-Terminal 3:
+Terminal 3 (CLI):
 
 ```bash
+export GAMESVC_URL="http://127.0.0.1:8080"
 go run ./cmd/ctl -- agents
 ```
 
@@ -244,50 +252,41 @@ go run ./cmd/ctl -- agents
 
 ## CLI Cheatsheet
 
-### Point the CLI at your command server
+Set URL:
 
 ```bash
 export GAMESVC_URL="http://127.0.0.1:8080"
-# OR:
+# or per-command:
 gamesvcctl --url http://127.0.0.1:8080 agents
 ```
 
-### Help
-
-```bash
-gamesvcctl --help
-gamesvcctl instances --help
-gamesvcctl instances params --help
-gamesvcctl templates --help
-```
-
-### Agents
+Agents:
 
 ```bash
 gamesvcctl agents
 ```
 
-### Instances
+Instances:
 
 ```bash
-# list instances on an agent
+# list
 gamesvcctl instances list <agentID>
 
-# create an instance (params are key=value)
+# create (params are key=value)
 gamesvcctl instances create <agentID> <name> <template> [key=value ...]
 
-# delete an instance
+# delete
 gamesvcctl instances delete <agentID> <name> [--force] [--delete-data]
 
-# enable/disable (controls whether instance may be started)
+# enable/disable
 gamesvcctl instances enable  <agentID> <instance>
 gamesvcctl instances disable <agentID> <instance>
 
-# set/unset params (changes apply on next start)
+# set/unset params (applies on next start)
 gamesvcctl instances params set   <agentID> <instance> key=value [key=value ...]
 gamesvcctl instances params unset <agentID> <instance> key [key ...]
 
-# rename an instance (must be stopped)
+# rename (must be stopped)
 gamesvcctl instances rename <agentID> <oldName> <newName>
 
 # start/stop/status
@@ -296,67 +295,12 @@ gamesvcctl instances stop   <agentID> <instance>
 gamesvcctl instances status <agentID> <instance>
 ```
 
-Examples:
+Templates:
 
 ```bash
-gamesvcctl agents
-gamesvcctl instances list home-01
-
-# create and start
-gamesvcctl instances create home-01 survival-2 minecraft-vanilla \
-  mem_min=2G mem_max=4G jar_path=/opt/minecraft/server.jar
-
-gamesvcctl instances start home-01 survival-2
-gamesvcctl instances status home-01 survival-2
-
-# update params (next start)
-gamesvcctl instances params set home-01 survival-2 mem_max=6G
-gamesvcctl instances params unset home-01 survival-2 jar_path
-
-# disable (prevents starting; does not stop a running instance)
-gamesvcctl instances disable home-01 survival-2
-
-# stop, rename, and restart under the new name
-gamesvcctl instances stop home-01 survival-2
-gamesvcctl instances rename home-01 survival-2 survival-2a
-gamesvcctl instances enable home-01 survival-2a
-gamesvcctl instances start home-01 survival-2a
-
-# cleanup
-gamesvcctl instances delete home-01 survival-2a --force --delete-data
-```
-
-### Templates
-
-```bash
-# list templates available on an agent
 gamesvcctl templates list <agentID>
-
-# inspect a single template
 gamesvcctl templates inspect <agentID> <templateName>
 ```
-
-Examples:
-
-```bash
-gamesvcctl templates list home-01
-gamesvcctl templates inspect home-01 minecraft-vanilla
-```
-
----
-
-## Instance Directories & Logs
-
-By default:
-
-- Instance working directory:
-  - `data/instances/<instance-name>/`
-
-- Logs are written to:
-  - `logs/<instance-name>.log`
-
-Many servers can be configured to store their world/data under the working directory.  
-For others, you may need to pass explicit arguments or environment variables.
 
 ---
 
@@ -367,64 +311,12 @@ This repo uses:
 - **Release Please** for versioning + changelog + GitHub Releases
 - A build workflow that compiles and uploads binaries for each release
 
-### How it works
-
-1. You merge Conventional Commits into `main`
-2. Release Please opens/updates a **Release PR**
-3. When the Release PR is merged:
-   - a git tag is created (e.g. `v0.2.0`)
-   - a GitHub Release is published
-4. The `Build Release Binaries` workflow runs and attaches binaries to the release
-
-### Commit conventions
-
-Examples:
-
-- `feat(agent): add instance create/delete`
-- `fix(command-server): handle agent re-register updates`
-- `feat(ctl): refactor CLI to cobra`
-- `docs(readme): update usage examples`
-
 ---
 
-## Notes on Security (Current State)
+## Security Notes
 
-The current implementation focuses on functionality and development velocity.
-
-**Important:** This v1 design does not yet include:
-
-- authentication / authorization
-- TLS/mTLS
-- rate limiting
-- audit logging
-
-For real deployment, the command server should be hardened with:
-
-- TLS + **mTLS** between agent and command server
-- identity controls (agent allowlist)
-- authenticated CLI access (JWT, API tokens)
-- strict action allowlisting
-
----
-
-## Roadmap Ideas
-
-- Add template management:
-  - create/update/delete templates via control plane
-  - prevent deletes when instances reference a template
-- Add instance update refinements:
-  - validate required params for template before start
-  - optional restart flag for param updates
-- Automatic port allocation
-- Log tailing via control plane
-- AuthN/AuthZ + TLS/mTLS
-- Discord / Slack / Web UI integrations
-- Server control reassumed after agent restarts
-  - PID file tracking
-  - STDIN reconnection
-- Control Server/Agent transport over gRPC (optional based on feature flags)
-- Process Plugin for custom server management
-- Windows support (not supported yet)
+- Agent ↔ command-server uses **mTLS** for identity + transport security.
+- The HTTP API is currently **unauthenticated** (intended for development and private deployments).
 
 ---
 
