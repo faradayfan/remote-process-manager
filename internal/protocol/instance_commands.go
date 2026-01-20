@@ -1,10 +1,13 @@
 package protocol
 
 const (
-	// Instance management commands (agent-side)
-	CmdInstancesList   = "instances.list"
-	CmdInstancesCreate = "instances.create"
-	CmdInstancesDelete = "instances.delete"
+	CmdInstancesList        = "instances.list"
+	CmdInstancesCreate      = "instances.create"
+	CmdInstancesDelete      = "instances.delete"
+	CmdInstancesEnable      = "instances.enable"
+	CmdInstancesDisable     = "instances.disable"
+	CmdInstancesParamsSet   = "instances.params.set"
+	CmdInstancesParamsUnset = "instances.params.unset"
 )
 
 type InstanceSummary struct {
@@ -27,4 +30,19 @@ type DeleteInstanceRequest struct {
 	Name       string `json:"name"`
 	Force      bool   `json:"force"`       // stop if running
 	DeleteData bool   `json:"delete_data"` // remove instance directory
+}
+
+type ToggleInstanceEnabledRequest struct {
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+}
+
+type InstancesParamsSetRequest struct {
+	Name string            `json:"name"`
+	Set  map[string]string `json:"set"`
+}
+
+type InstancesParamsUnsetRequest struct {
+	Name  string   `json:"name"`
+	Unset []string `json:"unset"`
 }
