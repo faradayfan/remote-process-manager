@@ -48,9 +48,9 @@ jobs:
             EXT=""
             if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
 
-            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w" -o "dist/agent_${GOOS}_${GOARCH}${EXT}_${VERSION}" ./cmd/agent
-            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w" -o "dist/command-server_${GOOS}_${GOARCH}${EXT}_${VERSION}" ./cmd/command-server
-            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w" -o "dist/ctl_${GOOS}_${GOARCH}${EXT}_${VERSION}" ./cmd/ctl
+            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w" -o "dist/agent_${VERSION}_${GOOS}_${GOARCH}${EXT}" ./cmd/agent
+            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w" -o "dist/command-server_${VERSION}_${GOOS}_${GOARCH}${EXT}" ./cmd/command-server
+            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w" -o "dist/ctl_${VERSION}_${GOOS}_${GOARCH}${EXT}" ./cmd/ctl
           }
 
           build_one linux amd64 ${{needs.release.outputs.tag_name}}
