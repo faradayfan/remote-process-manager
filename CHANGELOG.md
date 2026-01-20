@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/faradayfan/remote-process-manager/compare/v1.3.0...v1.4.0) (2026-01-20)
+
+
+### Features
+
+* **core:** mTLS ([5a4eb33](https://github.com/faradayfan/remote-process-manager/commit/5a4eb33abda96c68ace79d8a578be9e24ecbfe82))
+
 ## [1.3.0](https://github.com/faradayfan/remote-process-manager/compare/v1.2.0...v1.3.0) (2026-01-20)
 
 
