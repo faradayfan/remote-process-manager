@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/faradayfan/remote-process-manager/internal/protocol"
@@ -40,12 +41,13 @@ func (s *HTTPServer) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/agents/{agentID}/templates/{templateName}", s.handleTemplatesInspect)
 	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{instance}/start", s.handleInstanceStart)
 	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{instance}/stop", s.handleInstanceStop)
-	mux.HandleFunc("POST /v1/agents/{agentID}/instances/create", s.handleInstancesCreate)
-	mux.HandleFunc("POST /v1/agents/{agentID}/instances/delete", s.handleInstancesDelete)
-	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/enable", s.handleInstanceEnable)
 	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/disable", s.handleInstanceDisable)
+	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/enable", s.handleInstanceEnable)
 	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/params/set", s.handleInstanceParamsSet)
 	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/params/unset", s.handleInstanceParamsUnset)
+	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/rename", s.handleInstanceRename)
+	mux.HandleFunc("POST /v1/agents/{agentID}/instances/create", s.handleInstancesCreate)
+	mux.HandleFunc("POST /v1/agents/{agentID}/instances/delete", s.handleInstancesDelete)
 
 	// Health
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -415,6 +417,54 @@ func (s *HTTPServer) handleInstanceParamsUnset(w http.ResponseWriter, r *http.Re
 	}
 
 	resp, err := s.registry.SendCommand(ctx, agentID, protocol.CmdInstancesParamsUnset, req)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if resp.Error != "" {
+		writeErr(w, http.StatusBadRequest, resp.Error)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(resp.Payload)
+}
+
+func (s *HTTPServer) handleInstanceRename(w http.ResponseWriter, r *http.Request) {
+	agentID := r.PathValue("agentID")
+	name := r.PathValue("name")
+
+	if agentID == "" {
+		writeErr(w, http.StatusBadRequest, "missing agentID")
+		return
+	}
+	if name == "" {
+		writeErr(w, http.StatusBadRequest, "missing instance name")
+		return
+	}
+
+	var body struct {
+		NewName string `json:"new_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	if strings.TrimSpace(body.NewName) == "" {
+		writeErr(w, http.StatusBadRequest, "new_name is required")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	req := protocol.InstancesRenameRequest{
+		Name:    name,
+		NewName: body.NewName,
+	}
+
+	resp, err := s.registry.SendCommand(ctx, agentID, protocol.CmdInstancesRename, req)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
