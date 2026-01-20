@@ -203,6 +203,28 @@ func (h *Handler) Handle(ctx context.Context, msg protocol.Message) (protocol.Me
 			"unset": req.Unset,
 		}, nil)
 
+	case protocol.CmdInstancesRename:
+		var req protocol.InstancesRenameRequest
+		if err := json.Unmarshal(msg.Payload, &req); err != nil {
+			resp, _ := protocol.NewResponse(h.Ctx.AgentID, msg.ID, nil, fmt.Errorf("bad payload: %w", err))
+			return resp, nil
+		}
+
+		if err := h.Ctx.Instances.RenameInstance(req.Name, req.NewName); err != nil {
+			resp, _ := protocol.NewResponse(h.Ctx.AgentID, msg.ID, nil, err)
+			return resp, nil
+		}
+
+		if h.OnInstanceListChanged != nil {
+			h.OnInstanceListChanged()
+		}
+
+		return protocol.NewResponse(h.Ctx.AgentID, msg.ID, map[string]any{
+			"ok":  true,
+			"old": req.Name,
+			"new": req.NewName,
+		}, nil)
+
 	// --------------------
 	// Templates
 	// --------------------

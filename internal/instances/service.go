@@ -316,3 +316,76 @@ func render(tmpl string, ctx map[string]string) (string, error) {
 	}
 	return buf.String(), nil
 }
+
+func (s *Service) RenameInstance(oldName, newName string) error {
+	oldName = strings.TrimSpace(oldName)
+	newName = strings.TrimSpace(newName)
+
+	if oldName == "" || newName == "" {
+		return fmt.Errorf("old and new instance names must be non-empty")
+	}
+	if oldName == newName {
+		return fmt.Errorf("new instance name must be different")
+	}
+
+	// Basic safety: prevent path traversal / weirdness
+	if strings.ContainsAny(oldName, `/\`) || strings.ContainsAny(newName, `/\`) {
+		return fmt.Errorf("instance name cannot contain '/' or '\\\\'")
+	}
+
+	inst, ok := s.Instances[oldName]
+	if !ok {
+		return fmt.Errorf("instance not found: %s", oldName)
+	}
+	if _, exists := s.Instances[newName]; exists {
+		return fmt.Errorf("instance already exists: %s", newName)
+	}
+
+	// Must not be running (manager is keyed by instance name)
+	st := s.Mgr.Status(oldName)
+	if st.Running {
+		return fmt.Errorf("cannot rename instance while running: %s", oldName)
+	}
+
+	// Move directories + logs first, then save YAML.
+	// If YAML save fails, attempt rollback.
+	oldDir := filepath.Join(s.BaseInstanceDir, oldName)
+	newDir := filepath.Join(s.BaseInstanceDir, newName)
+
+	// Move instance directory if it exists
+	if err := renameIfExists(oldDir, newDir); err != nil {
+		return fmt.Errorf("failed to rename instance directory: %w", err)
+	}
+
+	oldLog := filepath.Join(s.LogDir, oldName+".log")
+	newLog := filepath.Join(s.LogDir, newName+".log")
+	_ = renameIfExists(oldLog, newLog) // best-effort
+
+	// Update YAML state
+	delete(s.Instances, oldName)
+	s.Instances[newName] = inst
+
+	if err := s.Store.Save(s.Instances); err != nil {
+		// rollback best-effort
+		_ = renameIfExists(newDir, oldDir)
+		_ = renameIfExists(newLog, oldLog)
+		// restore map rollback
+		delete(s.Instances, newName)
+		s.Instances[oldName] = inst
+
+		return fmt.Errorf("failed to persist instances.yaml: %w", err)
+	}
+
+	return nil
+}
+
+func renameIfExists(oldPath, newPath string) error {
+	_, err := os.Stat(oldPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // nothing to move
+		}
+		return err
+	}
+	return os.Rename(oldPath, newPath)
+}

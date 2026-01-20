@@ -8,6 +8,7 @@ const (
 	CmdInstancesDisable     = "instances.disable"
 	CmdInstancesParamsSet   = "instances.params.set"
 	CmdInstancesParamsUnset = "instances.params.unset"
+	CmdInstancesRename      = "instances.rename"
 )
 
 type InstanceSummary struct {
@@ -45,4 +46,9 @@ type InstancesParamsSetRequest struct {
 type InstancesParamsUnsetRequest struct {
 	Name  string   `json:"name"`
 	Unset []string `json:"unset"`
+}
+
+type InstancesRenameRequest struct {
+	Name    string `json:"name"`     // old name
+	NewName string `json:"new_name"` // new name
 }
