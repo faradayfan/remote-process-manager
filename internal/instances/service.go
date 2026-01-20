@@ -228,25 +228,25 @@ func (s *Service) UnsetParams(name string, keys []string) error {
 	return s.Store.Save(s.Instances)
 }
 
-func (s *Service) ResolveConfig(instanceName string) (manager.ServerConfig, string, error) {
+func (s *Service) ResolveConfig(instanceName string) (manager.InstanceConfig, string, error) {
 	s.mu.Lock()
 	inst, ok := s.Instances[instanceName]
 	s.mu.Unlock()
 
 	if !ok {
-		return manager.ServerConfig{}, "", fmt.Errorf("unknown instance: %s", instanceName)
+		return manager.InstanceConfig{}, "", fmt.Errorf("unknown instance: %s", instanceName)
 	}
 	if !inst.Enabled {
-		return manager.ServerConfig{}, "", fmt.Errorf("instance %q is disabled", instanceName)
+		return manager.InstanceConfig{}, "", fmt.Errorf("instance %q is disabled", instanceName)
 	}
 
 	tpl, ok := s.Templates[inst.Template]
 	if !ok {
-		return manager.ServerConfig{}, "", fmt.Errorf("instance %q references unknown template %q", instanceName, inst.Template)
+		return manager.InstanceConfig{}, "", fmt.Errorf("instance %q references unknown template %q", instanceName, inst.Template)
 	}
 
 	if err := s.EnsureDirs(instanceName); err != nil {
-		return manager.ServerConfig{}, "", fmt.Errorf("ensure dirs: %w", err)
+		return manager.InstanceConfig{}, "", fmt.Errorf("ensure dirs: %w", err)
 	}
 
 	instanceDir := s.InstanceDir(instanceName)
@@ -262,38 +262,38 @@ func (s *Service) ResolveConfig(instanceName string) (manager.ServerConfig, stri
 
 	command, err := render(tpl.Command, ctx)
 	if err != nil {
-		return manager.ServerConfig{}, "", fmt.Errorf("render template.command: %w", err)
+		return manager.InstanceConfig{}, "", fmt.Errorf("render template.command: %w", err)
 	}
 
 	args := make([]string, 0, len(tpl.Args))
 	for _, a := range tpl.Args {
 		r, err := render(a, ctx)
 		if err != nil {
-			return manager.ServerConfig{}, "", fmt.Errorf("render template.args: %w", err)
+			return manager.InstanceConfig{}, "", fmt.Errorf("render template.args: %w", err)
 		}
 		args = append(args, r)
 	}
 
 	cwd, err := render(tpl.Cwd, ctx)
 	if err != nil {
-		return manager.ServerConfig{}, "", fmt.Errorf("render template.cwd: %w", err)
+		return manager.InstanceConfig{}, "", fmt.Errorf("render template.cwd: %w", err)
 	}
 
 	env := make([]string, 0, len(tpl.Env))
 	for _, e := range tpl.Env {
 		r, err := render(e, ctx)
 		if err != nil {
-			return manager.ServerConfig{}, "", fmt.Errorf("render template.env: %w", err)
+			return manager.InstanceConfig{}, "", fmt.Errorf("render template.env: %w", err)
 		}
 		env = append(env, r)
 	}
 
 	stopCfg, err := config.ConvertStopPublic(instanceName, tpl.Stop)
 	if err != nil {
-		return manager.ServerConfig{}, "", err
+		return manager.InstanceConfig{}, "", err
 	}
 
-	cfg := manager.ServerConfig{
+	cfg := manager.InstanceConfig{
 		Name:    instanceName,
 		Command: command,
 		Args:    args,

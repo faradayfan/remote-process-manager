@@ -9,8 +9,14 @@ import (
 	"github.com/faradayfan/remote-process-manager/internal/manager"
 )
 
+type Stop struct {
+	Type        string `yaml:"type"`         // "stdin" or "signal"
+	Command     string `yaml:"command"`      // for stdin stop (e.g. "stop\n")
+	Signal      string `yaml:"signal"`       // for signal stop (e.g. "SIGTERM")
+	GracePeriod string `yaml:"grace_period"` // e.g. "15s"
+}
+
 func ConvertStopPublic(serverName string, s Stop) (manager.StopConfig, error) {
-	// defaults
 	cfg := manager.StopConfig{
 		Type:        manager.StopSignal,
 		Signal:      syscall.SIGTERM,
@@ -28,7 +34,6 @@ func ConvertStopPublic(serverName string, s Stop) (manager.StopConfig, error) {
 		}
 	}
 
-	// Grace period
 	if strings.TrimSpace(s.GracePeriod) != "" {
 		d, err := time.ParseDuration(strings.TrimSpace(s.GracePeriod))
 		if err != nil {
@@ -37,7 +42,6 @@ func ConvertStopPublic(serverName string, s Stop) (manager.StopConfig, error) {
 		cfg.GracePeriod = d
 	}
 
-	// stdin command
 	if cfg.Type == manager.StopStdin {
 		cmd := s.Command
 		if strings.TrimSpace(cmd) == "" {
@@ -47,7 +51,6 @@ func ConvertStopPublic(serverName string, s Stop) (manager.StopConfig, error) {
 		return cfg, nil
 	}
 
-	// signal
 	if cfg.Type == manager.StopSignal && strings.TrimSpace(s.Signal) != "" {
 		sig, err := parseSignal(strings.TrimSpace(s.Signal))
 		if err != nil {

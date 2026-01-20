@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func (m *Manager) Start(cfg ServerConfig, logPath string) (ServerState, error) {
+func (m *Manager) Start(cfg InstanceConfig, logPath string) (InstanceState, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -32,7 +32,7 @@ func (m *Manager) Start(cfg ServerConfig, logPath string) (ServerState, error) {
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		cancel()
-		return ServerState{}, err
+		return InstanceState{}, err
 	}
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
@@ -42,19 +42,19 @@ func (m *Manager) Start(cfg ServerConfig, logPath string) (ServerState, error) {
 	if err != nil {
 		cancel()
 		_ = logFile.Close()
-		return ServerState{}, err
+		return InstanceState{}, err
 	}
 
 	if err := cmd.Start(); err != nil {
 		cancel()
 		_ = logFile.Close()
-		return ServerState{}, err
+		return InstanceState{}, err
 	}
 
 	p := &managedProc{
 		cfg:    cfg,
 		cmd:    cmd,
-		state:  ServerState{Name: cfg.Name, Running: true, PID: cmd.Process.Pid, StartedAt: time.Now()},
+		state:  InstanceState{Name: cfg.Name, Running: true, PID: cmd.Process.Pid, StartedAt: time.Now()},
 		stdin:  bufio.NewWriter(stdinPipe),
 		cancel: cancel,
 	}
@@ -93,12 +93,12 @@ func (m *Manager) Start(cfg ServerConfig, logPath string) (ServerState, error) {
 	return p.state, nil
 }
 
-func (m *Manager) Stop(name string) (ServerState, error) {
+func (m *Manager) Stop(name string) (InstanceState, error) {
 	m.mu.Lock()
 	p, ok := m.procs[name]
 	if !ok {
 		m.mu.Unlock()
-		return ServerState{}, fmt.Errorf("unknown server: %s", name)
+		return InstanceState{}, fmt.Errorf("unknown server: %s", name)
 	}
 	if !p.state.Running || p.cmd.Process == nil {
 		state := p.state
@@ -161,19 +161,19 @@ func (m *Manager) IsRunning(name string) bool {
 	return ok && p.state.Running
 }
 
-func (m *Manager) Status(name string) ServerState {
+func (m *Manager) Status(name string) InstanceState {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if p, ok := m.procs[name]; ok {
 		return p.state
 	}
-	return ServerState{Name: name, Running: false}
+	return InstanceState{Name: name, Running: false}
 }
 
-func (m *Manager) List() []ServerState {
+func (m *Manager) List() []InstanceState {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]ServerState, 0, len(m.procs))
+	out := make([]InstanceState, 0, len(m.procs))
 	for _, p := range m.procs {
 		out = append(out, p.state)
 	}

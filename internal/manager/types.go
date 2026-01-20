@@ -23,7 +23,7 @@ type StopConfig struct {
 	GracePeriod  time.Duration  // how long before SIGKILL
 }
 
-type ServerConfig struct {
+type InstanceConfig struct {
 	Name    string
 	Command string
 	Args    []string
@@ -32,7 +32,7 @@ type ServerConfig struct {
 	Stop    StopConfig
 }
 
-type ServerState struct {
+type InstanceState struct {
 	Name      string
 	Running   bool
 	PID       int
@@ -43,9 +43,9 @@ type ServerState struct {
 }
 
 type managedProc struct {
-	cfg   ServerConfig
+	cfg   InstanceConfig
 	cmd   *exec.Cmd
-	state ServerState
+	state InstanceState
 
 	stdin  *bufio.Writer
 	cancel context.CancelFunc
