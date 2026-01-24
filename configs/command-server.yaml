@@ -7,3 +7,9 @@ tls:
   key_file: "configs/certs/server.key"
   allowed_agents:
     - "home-01"
+
+api:
+  keys_file: "configs/api-keys.yaml"
+
+  # Set to true to disable authentication (development only!)
+  # allow_unauthenticated: true

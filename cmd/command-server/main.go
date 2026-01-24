@@ -26,6 +26,13 @@ func main() {
 		log.Fatalf("[command-server] failed to load config: %v", err)
 	}
 
+	keyStore, err := server.InitAPIKeyStore(cfg.API.KeysFile)
+	if err != nil {
+		log.Fatalf("[command-server] failed to initialize api keys: %v", err)
+	}
+
+	auth := server.NewAuthMiddleware(keyStore.GetKeys(), cfg.API.AllowUnauthenticated)
+
 	reg := server.NewRegistry()
 
 	tlsCfg, err := server.BuildMTLSServerConfig(
@@ -46,7 +53,8 @@ func main() {
 		}
 	}()
 
-	api := server.NewHTTPServer(cfg.HTTPAddr, reg)
+	// Pass auth middleware to HTTP server
+	api := server.NewHTTPServer(cfg.HTTPAddr, reg, auth)
 
 	httpSrv := &http.Server{
 		Addr:    api.Addr(),
