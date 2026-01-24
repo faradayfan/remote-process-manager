@@ -13,18 +13,27 @@ type API struct {
 	client    *http.Client
 	baseURL   string
 	apiPrefix string
+	apiKey    string // NEW
 }
 
-func NewAPI(client *http.Client, baseURL, apiPrefix string) *API {
+func NewAPI(client *http.Client, baseURL, apiPrefix, apiKey string) *API {
 	return &API{
 		client:    client,
 		baseURL:   strings.TrimRight(baseURL, "/"),
 		apiPrefix: apiPrefix,
+		apiKey:    apiKey, // NEW
 	}
 }
 
 func (a *API) url(path string) string {
 	return a.baseURL + a.apiPrefix + path
+}
+
+// NEW: setAuth adds authorization header if API key is configured
+func (a *API) setAuth(req *http.Request) {
+	if a.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+a.apiKey)
+	}
 }
 
 func (a *API) PrintGET(path string) error {
@@ -57,6 +66,8 @@ func (a *API) GET(path string) ([]byte, int, error) {
 		return nil, 0, err
 	}
 
+	a.setAuth(req) // NEW
+
 	res, err := a.client.Do(req)
 	if err != nil {
 		return nil, 0, err
@@ -82,6 +93,8 @@ func (a *API) POST(path string, payload any) ([]byte, int, error) {
 		return nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	a.setAuth(req) // NEW
 
 	res, err := a.client.Do(req)
 	if err != nil {

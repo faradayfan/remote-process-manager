@@ -16,3 +16,5 @@ configs/instances.yaml
 configs/agent.yaml
 server-binaries
 configs/certs/*
+configs/api-keys.yaml
+configs/api-keys.yaml.tmp

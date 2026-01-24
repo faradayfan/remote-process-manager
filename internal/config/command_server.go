@@ -11,6 +11,7 @@ type CommandServerConfig struct {
 	TCPAddr  string                 `yaml:"tcp_addr"`
 	HTTPAddr string                 `yaml:"http_addr"`
 	TLS      CommandServerTLSConfig `yaml:"tls"`
+	API      CommandServerAPIConfig `yaml:"api"` // NEW
 }
 
 type CommandServerTLSConfig struct {
@@ -18,6 +19,11 @@ type CommandServerTLSConfig struct {
 	CertFile      string   `yaml:"cert_file"`
 	KeyFile       string   `yaml:"key_file"`
 	AllowedAgents []string `yaml:"allowed_agents"`
+}
+
+type CommandServerAPIConfig struct {
+	KeysFile             string `yaml:"keys_file"`
+	AllowUnauthenticated bool   `yaml:"allow_unauthenticated"`
 }
 
 func LoadCommandServer(path string) (*CommandServerConfig, error) {
@@ -36,6 +42,10 @@ func LoadCommandServer(path string) (*CommandServerConfig, error) {
 	}
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = "0.0.0.0:8080"
+	}
+
+	if cfg.API.KeysFile == "" {
+		cfg.API.KeysFile = "configs/api-keys.yaml"
 	}
 
 	if cfg.TLS.CAFile == "" {

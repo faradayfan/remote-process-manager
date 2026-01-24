@@ -13,15 +13,17 @@ import (
 type HTTPServer struct {
 	addr     string
 	registry *Registry
+	auth     *AuthMiddleware // NEW
 }
 
-func NewHTTPServer(addr string, registry *Registry) *HTTPServer {
+func NewHTTPServer(addr string, registry *Registry, auth *AuthMiddleware) *HTTPServer {
 	if addr == "" {
 		addr = "127.0.0.1:8080"
 	}
 	return &HTTPServer{
 		addr:     addr,
 		registry: registry,
+		auth:     auth, // NEW
 	}
 }
 
@@ -30,34 +32,35 @@ func (s *HTTPServer) Addr() string { return s.addr }
 func (s *HTTPServer) Handler() http.Handler {
 	mux := http.NewServeMux()
 
-	// Agent registry
-	mux.HandleFunc("GET /v1/agents", s.handleListAgents)
-	mux.HandleFunc("GET /v1/agents/{agentID}", s.handleGetAgent)
+	// Read-only endpoints (RoleRead or RoleAdmin)
+	mux.Handle("GET /v1/agents", s.auth.Wrap(RoleRead, s.handleListAgents))
+	mux.Handle("GET /v1/agents/{agentID}", s.auth.Wrap(RoleRead, s.handleGetAgent))
+	mux.Handle("GET /v1/agents/{agentID}/instances", s.auth.Wrap(RoleRead, s.handleInstancesList))
+	mux.Handle("GET /v1/agents/{agentID}/instances/{instance}/status", s.auth.Wrap(RoleRead, s.handleInstanceStatus))
+	mux.Handle("GET /v1/agents/{agentID}/templates", s.auth.Wrap(RoleRead, s.handleTemplatesList))
+	mux.Handle("GET /v1/agents/{agentID}/templates/{templateName}", s.auth.Wrap(RoleRead, s.handleTemplatesInspect))
 
-	// Commands to agents (relay)
-	mux.HandleFunc("GET /v1/agents/{agentID}/instances", s.handleInstancesList)
-	mux.HandleFunc("GET /v1/agents/{agentID}/instances/{instance}/status", s.handleInstanceStatus)
-	mux.HandleFunc("GET /v1/agents/{agentID}/templates", s.handleTemplatesList)
-	mux.HandleFunc("GET /v1/agents/{agentID}/templates/{templateName}", s.handleTemplatesInspect)
-	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{instance}/start", s.handleInstanceStart)
-	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{instance}/stop", s.handleInstanceStop)
-	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/disable", s.handleInstanceDisable)
-	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/enable", s.handleInstanceEnable)
-	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/params/set", s.handleInstanceParamsSet)
-	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/params/unset", s.handleInstanceParamsUnset)
-	mux.HandleFunc("POST /v1/agents/{agentID}/instances/{name}/rename", s.handleInstanceRename)
-	mux.HandleFunc("POST /v1/agents/{agentID}/instances/create", s.handleInstancesCreate)
-	mux.HandleFunc("POST /v1/agents/{agentID}/instances/delete", s.handleInstancesDelete)
+	// Write endpoints (RoleAdmin only)
+	mux.Handle("POST /v1/agents/{agentID}/instances/{instance}/start", s.auth.Wrap(RoleAdmin, s.handleInstanceStart))
+	mux.Handle("POST /v1/agents/{agentID}/instances/{instance}/stop", s.auth.Wrap(RoleAdmin, s.handleInstanceStop))
+	mux.Handle("POST /v1/agents/{agentID}/instances/{name}/disable", s.auth.Wrap(RoleAdmin, s.handleInstanceDisable))
+	mux.Handle("POST /v1/agents/{agentID}/instances/{name}/enable", s.auth.Wrap(RoleAdmin, s.handleInstanceEnable))
+	mux.Handle("POST /v1/agents/{agentID}/instances/{name}/params/set", s.auth.Wrap(RoleAdmin, s.handleInstanceParamsSet))
+	mux.Handle("POST /v1/agents/{agentID}/instances/{name}/params/unset", s.auth.Wrap(RoleAdmin, s.handleInstanceParamsUnset))
+	mux.Handle("POST /v1/agents/{agentID}/instances/{name}/rename", s.auth.Wrap(RoleAdmin, s.handleInstanceRename))
+	mux.Handle("POST /v1/agents/{agentID}/instances/create", s.auth.Wrap(RoleAdmin, s.handleInstancesCreate))
+	mux.Handle("POST /v1/agents/{agentID}/instances/delete", s.auth.Wrap(RoleAdmin, s.handleInstancesDelete))
 
-	// Health
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+	// Health check - no auth required
+	mux.Handle("GET /healthz", s.auth.WrapNoAuth(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
-	})
+	}))
 
 	return mux
 }
 
+// ... rest of the file remains unchanged ...
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -120,7 +123,6 @@ func (s *HTTPServer) command(w http.ResponseWriter, r *http.Request, cmdType str
 		return
 	}
 
-	// If agent returned an error, bubble it up cleanly
 	if resp.Error != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"agent_id": agentID,
@@ -130,7 +132,6 @@ func (s *HTTPServer) command(w http.ResponseWriter, r *http.Request, cmdType str
 		return
 	}
 
-	// If payload is empty, just return a generic ok
 	if len(resp.Payload) == 0 {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"agent_id": agentID,
@@ -140,7 +141,6 @@ func (s *HTTPServer) command(w http.ResponseWriter, r *http.Request, cmdType str
 		return
 	}
 
-	// Otherwise return payload as JSON
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(resp.Payload)
@@ -243,7 +243,6 @@ func (s *HTTPServer) handleTemplatesList(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	// Send an empty object payload (not nil) for consistency
 	resp, err := s.registry.SendCommand(ctx, agentID, protocol.CmdTemplatesList, map[string]any{})
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
@@ -254,7 +253,6 @@ func (s *HTTPServer) handleTemplatesList(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Raw JSON from agent
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(resp.Payload)
@@ -290,7 +288,6 @@ func (s *HTTPServer) handleTemplatesInspect(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Raw JSON from agent
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(resp.Payload)
