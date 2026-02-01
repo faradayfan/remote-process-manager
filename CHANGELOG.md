@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/faradayfan/remote-process-manager/compare/v1.4.0...v1.5.0) (2026-02-01)
+
+
+### Features
+
+* adding api auth for command server interactions ([21f987a](https://github.com/faradayfan/remote-process-manager/commit/21f987a6dadca0eeb569d31841588ae22768cfd3))
+
 ## [1.4.0](https://github.com/faradayfan/remote-process-manager/compare/v1.3.0...v1.4.0) (2026-01-20)
 
 
