@@ -54,6 +54,10 @@ CTL_BIN="gamesvcctl"
 
 JAR_PATH=""
 
+# CI mode: use lightweight ci-test template instead of Minecraft
+CI_MODE=0
+CI_SLEEP_DURATION="30"  # seconds for the sleep process to run
+
 # ----------------------------
 # locate repo root + cd
 # ----------------------------
@@ -74,6 +78,7 @@ Usage:
   $0 [options]
 
 Options:
+  --ci                    CI mode: use lightweight ci-test template (no jar required)
   --agent-id <id>         Agent ID to target (default: ${AGENT_ID})
   --template <name>       Template name (default: ${TEMPLATE})
   --jar-path <path>       Path to Minecraft server.jar (default: auto-detect)
@@ -84,7 +89,10 @@ Options:
   --no-mc-eula            Do not write Minecraft eula.txt (default: off)
 
 Examples:
-  # go run ./cmd/ctl (default)
+  # CI mode (no Minecraft required)
+  ./scripts/test-local.sh --ci
+
+  # Minecraft mode (requires jar path)
   ./scripts/test-local.sh --jar-path /opt/minecraft/server.jar
 
   # with API key
@@ -98,6 +106,12 @@ EOF
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
+	--ci)
+		CI_MODE=1
+		TEMPLATE="ci-test"
+		ACCEPT_MINECRAFT_EULA=0
+		shift 1
+		;;
 	--agent-id)
 		AGENT_ID="${2:?missing value}"
 		shift 2
@@ -142,9 +156,11 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 
-if [[ -z "${JAR_PATH}" ]]; then
+# In CI mode, jar path is not required
+if [[ "${CI_MODE}" -eq 0 ]] && [[ -z "${JAR_PATH}" ]]; then
 	echo "ERROR: --jar-path is required (could not auto-detect server jar)." >&2
 	echo "Hint: ./scripts/test-local.sh --jar-path /path/to/server.jar" >&2
+	echo "      or use --ci for CI mode (no jar required)" >&2
 	exit 2
 fi
 
@@ -234,7 +250,11 @@ echo "  URL       : ${URL}"
 echo "  API Key   : ${API_KEY:+(set)}"
 echo "  Agent ID  : ${AGENT_ID}"
 echo "  Template  : ${TEMPLATE}"
-echo "  Jar Path  : ${JAR_PATH}"
+if [[ "${CI_MODE}" -eq 1 ]]; then
+	echo "  CI Mode   : enabled (using sleep-based test process)"
+else
+	echo "  Jar Path  : ${JAR_PATH}"
+fi
 echo "  CLI mode  : ${CTL_MODE}"
 echo
 
@@ -269,8 +289,13 @@ step "instances list (empty or existing)"
 run_ok ctl instances list "${AGENT_ID}"
 
 step "instances create ${INSTANCE_A}"
-run_ok ctl instances create "${AGENT_ID}" "${INSTANCE_A}" "${TEMPLATE}" \
-	"mem_min=${MEM_MIN}" "mem_max=${MEM_MAX}" "jar_path=${JAR_PATH}"
+if [[ "${CI_MODE}" -eq 1 ]]; then
+	run_ok ctl instances create "${AGENT_ID}" "${INSTANCE_A}" "${TEMPLATE}" \
+		"duration=${CI_SLEEP_DURATION}"
+else
+	run_ok ctl instances create "${AGENT_ID}" "${INSTANCE_A}" "${TEMPLATE}" \
+		"mem_min=${MEM_MIN}" "mem_max=${MEM_MAX}" "jar_path=${JAR_PATH}"
+fi
 
 step "instances list (should include ${INSTANCE_A})"
 run_ok ctl instances list "${AGENT_ID}"
@@ -290,7 +315,12 @@ ensure_minecraft_eula "${INSTANCE_A}"
 step "start instance"
 run_ok ctl instances start "${AGENT_ID}" "${INSTANCE_A}"
 
-sleep 10 # give it a moment to start up
+# Give it a moment to start up (shorter in CI mode)
+if [[ "${CI_MODE}" -eq 1 ]]; then
+	sleep 2
+else
+	sleep 10
+fi
 
 step "rename should fail when running"
 run_expect_fail ctl instances rename "${AGENT_ID}" "${INSTANCE_A}" "${INSTANCE_B}"
@@ -299,10 +329,19 @@ step "status (running)"
 run_ok ctl instances status "${AGENT_ID}" "${INSTANCE_A}"
 
 step "params set (apply next start)"
-run_ok ctl instances params set "${AGENT_ID}" "${INSTANCE_A}" "mem_max=6G"
+if [[ "${CI_MODE}" -eq 1 ]]; then
+	run_ok ctl instances params set "${AGENT_ID}" "${INSTANCE_A}" "duration=60"
+else
+	run_ok ctl instances params set "${AGENT_ID}" "${INSTANCE_A}" "mem_max=6G"
+fi
 
 step "params unset (apply next start)"
-run_ok ctl instances params unset "${AGENT_ID}" "${INSTANCE_A}" "jar_path"
+if [[ "${CI_MODE}" -eq 1 ]]; then
+	# In CI mode, unset duration to test missing required param
+	run_ok ctl instances params unset "${AGENT_ID}" "${INSTANCE_A}" "duration"
+else
+	run_ok ctl instances params unset "${AGENT_ID}" "${INSTANCE_A}" "jar_path"
+fi
 
 step "status (still running; params changes won't apply until restart)"
 run_ok ctl instances status "${AGENT_ID}" "${INSTANCE_A}"
@@ -310,7 +349,12 @@ run_ok ctl instances status "${AGENT_ID}" "${INSTANCE_A}"
 step "stop instance"
 run_ok ctl instances stop "${AGENT_ID}" "${INSTANCE_A}"
 
-sleep 10
+# Wait for process to fully stop
+if [[ "${CI_MODE}" -eq 1 ]]; then
+	sleep 2
+else
+	sleep 10
+fi
 
 step "rename instance (now stopped)"
 run_ok ctl instances rename "${AGENT_ID}" "${INSTANCE_A}" "${INSTANCE_B}"
@@ -321,16 +365,25 @@ run_ok ctl instances list "${AGENT_ID}"
 # ensure EULA under the new instance dir too (Minecraft stores it per instance dir)
 ensure_minecraft_eula "${INSTANCE_B}"
 
-step "fail to start renamed instance with unset jar_path"
+step "fail to start renamed instance with unset param"
 run_expect_fail ctl instances start "${AGENT_ID}" "${INSTANCE_B}"
 
-step "set jar_path for renamed instance"
-run_ok ctl instances params set "${AGENT_ID}" "${INSTANCE_B}" "jar_path=${JAR_PATH}"
+step "restore required param for renamed instance"
+if [[ "${CI_MODE}" -eq 1 ]]; then
+	run_ok ctl instances params set "${AGENT_ID}" "${INSTANCE_B}" "duration=${CI_SLEEP_DURATION}"
+else
+	run_ok ctl instances params set "${AGENT_ID}" "${INSTANCE_B}" "jar_path=${JAR_PATH}"
+fi
 
 step "start renamed instance"
 run_ok ctl instances start "${AGENT_ID}" "${INSTANCE_B}"
 
-sleep 10
+# Wait for startup
+if [[ "${CI_MODE}" -eq 1 ]]; then
+	sleep 2
+else
+	sleep 10
+fi
 
 step "status (running renamed instance)"
 run_ok ctl instances status "${AGENT_ID}" "${INSTANCE_B}"
@@ -338,7 +391,12 @@ run_ok ctl instances status "${AGENT_ID}" "${INSTANCE_B}"
 step "stop renamed instance"
 run_ok ctl instances stop "${AGENT_ID}" "${INSTANCE_B}"
 
-sleep 10
+# Wait for shutdown
+if [[ "${CI_MODE}" -eq 1 ]]; then
+	sleep 2
+else
+	sleep 10
+fi
 
 step "delete instance (force + delete-data)"
 run_ok ctl instances delete "${AGENT_ID}" "${INSTANCE_B}" --force --delete-data

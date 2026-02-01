@@ -88,13 +88,44 @@ export GAMESVC_API_KEY="$(grep 'key:' configs/api-keys.yaml | head -1 | awk '{pr
 
 | Option | Description | Default |
 |--------|-------------|---------|
+| `--ci` | CI mode: use lightweight test template (no jar required) | - |
 | `--agent-id <id>` | Agent ID to target | `home-01` |
 | `--template <name>` | Template name | `minecraft-vanilla` |
-| `--jar-path <path>` | Path to Minecraft server.jar | (required) |
+| `--jar-path <path>` | Path to Minecraft server.jar | (required unless `--ci`) |
 | `--url <url>` | Command server URL | `http://127.0.0.1:8080` |
 | `--api-key <key>` | API key (or use `GAMESVC_API_KEY`) | - |
 | `--use-bin` | Use installed binary instead of `go run` | - |
 | `--no-mc-eula` | Don't write eula.txt automatically | - |
+
+## CI Mode
+
+For CI/CD pipelines, use `--ci` mode which:
+
+- Uses the lightweight `ci-test` template (just runs `sleep`)
+- No Minecraft server.jar required
+- Shorter wait times between operations
+- Tests all the same functionality
+
+```bash
+./scripts/test-local.sh --ci
+```
+
+The CI mode uses the `ci-test` template defined in `configs/instance-templates.yaml`:
+
+```yaml
+ci-test:
+  command: "sleep"
+  args: ["{{.duration}}"]
+  cwd: "{{.instance_dir}}"
+  stop:
+    type: "signal"
+    signal: "SIGTERM"
+    grace_period: "5s"
+```
+
+### Running in GitHub Actions
+
+The smoke test runs automatically on PRs and pushes to main. See `.github/workflows/ci.yml` for the workflow configuration.
 
 ### Important: Use Absolute Paths
 
