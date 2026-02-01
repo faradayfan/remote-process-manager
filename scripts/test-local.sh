@@ -31,6 +31,7 @@ set -euo pipefail
 AGENT_ID="home-01"
 TEMPLATE="minecraft-vanilla"
 URL="${GAMESVC_URL:-http://127.0.0.1:8080}"
+API_KEY="${GAMESVC_API_KEY:-}"
 
 MEM_MIN="2G"
 MEM_MAX="4G"
@@ -77,13 +78,17 @@ Options:
   --template <name>       Template name (default: ${TEMPLATE})
   --jar-path <path>       Path to Minecraft server.jar (default: auto-detect)
   --url <url>             Command server HTTP URL (default: ${URL})
+  --api-key <key>         API key for authentication (or set GAMESVC_API_KEY)
   --ctl-bin <name>        Use installed CLI binary (default: ${CTL_BIN})
   --use-bin               Use installed CLI binary instead of go run
-  --no-mc-eula             Do not write Minecraft eula.txt (default: off)
+  --no-mc-eula            Do not write Minecraft eula.txt (default: off)
 
 Examples:
   # go run ./cmd/ctl (default)
   ./scripts/test-local.sh --jar-path /opt/minecraft/server.jar
+
+  # with API key
+  ./scripts/test-local.sh --jar-path /opt/minecraft/server.jar --api-key rpm_sk_...
 
   # use installed gamesvcctl
   ./scripts/test-local.sh --use-bin --ctl-bin gamesvcctl --jar-path /opt/minecraft/server.jar
@@ -107,6 +112,10 @@ while [[ $# -gt 0 ]]; do
 		;;
 	--url)
 		URL="${2:?missing value}"
+		shift 2
+		;;
+	--api-key)
+		API_KEY="${2:?missing value}"
 		shift 2
 		;;
 	--use-bin)
@@ -140,6 +149,7 @@ if [[ -z "${JAR_PATH}" ]]; then
 fi
 
 export GAMESVC_URL="${URL}"
+export GAMESVC_API_KEY="${API_KEY}"
 
 # ----------------------------
 # CLI runner
@@ -221,6 +231,7 @@ EOF
 echo "Remote Process Manager smoke test"
 echo "  Repo root : ${REPO_ROOT}"
 echo "  URL       : ${URL}"
+echo "  API Key   : ${API_KEY:+(set)}"
 echo "  Agent ID  : ${AGENT_ID}"
 echo "  Template  : ${TEMPLATE}"
 echo "  Jar Path  : ${JAR_PATH}"
@@ -233,6 +244,18 @@ cleanup_instance "${INSTANCE_B}"
 # ----------------------------
 # smoke tests
 # ----------------------------
+
+# Test API authentication if key is configured
+if [[ -n "${API_KEY}" ]]; then
+	step "auth: verify unauthorized request fails"
+	# Temporarily unset key to test auth rejection
+	(
+		unset GAMESVC_API_KEY
+		run_expect_fail ctl agents
+	)
+	step "auth: verify authorized request succeeds"
+fi
+
 step "agents list"
 run_ok ctl agents
 
