@@ -165,25 +165,26 @@ func generateAPIKey() (string, error) {
 }
 
 // InitAPIKeyStore loads or creates the key store and ensures admin key exists.
-// Logs the admin key to stdout if newly created.
 func InitAPIKeyStore(path string) (*APIKeyStore, error) {
 	store := NewAPIKeyStore(path)
+
+	// Check if keys file exists before loading
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		log.Printf("[command-server] API keys file not found: %s (will be created)", path)
+	}
 
 	if err := store.Load(); err != nil {
 		return nil, fmt.Errorf("load api keys: %w", err)
 	}
 
-	key, created, err := store.EnsureAdminKey()
+	_, created, err := store.EnsureAdminKey()
 	if err != nil {
 		return nil, fmt.Errorf("ensure admin key: %w", err)
 	}
 
 	if created {
-		log.Printf("[command-server] ============================================")
-		log.Printf("[command-server] ADMIN API KEY GENERATED (save this!):")
-		log.Printf("[command-server]   %s", key)
-		log.Printf("[command-server] ============================================")
-		log.Printf("[command-server] Key saved to: %s", path)
+		log.Printf("[command-server] Admin API key generated and saved to: %s", path)
+		log.Printf("[command-server] Retrieve your key with: cat %s", path)
 	} else {
 		log.Printf("[command-server] API keys loaded from: %s", path)
 	}

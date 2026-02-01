@@ -33,6 +33,11 @@ func main() {
 
 	auth := server.NewAuthMiddleware(keyStore.GetKeys(), cfg.API.AllowUnauthenticated)
 
+	if cfg.API.AllowUnauthenticated {
+		log.Printf("[command-server] WARNING: API authentication disabled (allow_unauthenticated=true)")
+		log.Printf("[command-server] WARNING: All endpoints are open - development use only!")
+	}
+
 	reg := server.NewRegistry()
 
 	tlsCfg, err := server.BuildMTLSServerConfig(

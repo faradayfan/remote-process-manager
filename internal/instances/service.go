@@ -333,18 +333,21 @@ func (s *Service) RenameInstance(oldName, newName string) error {
 		return fmt.Errorf("instance name cannot contain '/' or '\\\\'")
 	}
 
+	// Must not be running (manager is keyed by instance name)
+	// Check this BEFORE acquiring the lock to avoid holding lock while checking manager
+	if s.Mgr.IsRunning(oldName) {
+		return fmt.Errorf("cannot rename instance while running: %s", oldName)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	inst, ok := s.Instances[oldName]
 	if !ok {
 		return fmt.Errorf("instance not found: %s", oldName)
 	}
 	if _, exists := s.Instances[newName]; exists {
 		return fmt.Errorf("instance already exists: %s", newName)
-	}
-
-	// Must not be running (manager is keyed by instance name)
-	st := s.Mgr.Status(oldName)
-	if st.Running {
-		return fmt.Errorf("cannot rename instance while running: %s", oldName)
 	}
 
 	// Move directories + logs first, then save YAML.

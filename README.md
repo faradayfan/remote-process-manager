@@ -229,23 +229,21 @@ Generate more agents:
 
 ## Running Locally
 
-Terminal 1 (command server):
+See [docs/test-local.md](docs/test-local.md) for the complete local testing guide.
+
+**Quick start:**
 
 ```bash
+# Terminal 1: Command server
 go run ./cmd/command-server -config configs/command-server.yaml
-```
 
-Terminal 2 (agent):
-
-```bash
+# Terminal 2: Agent
 go run ./cmd/agent
-```
 
-Terminal 3 (CLI):
-
-```bash
+# Terminal 3: CLI (get API key from configs/api-keys.yaml)
+export GAMESVC_API_KEY="rpm_sk_..."
 export GAMESVC_URL="http://127.0.0.1:8080"
-go run ./cmd/ctl -- agents
+go run ./cmd/ctl agents
 ```
 
 ---
@@ -316,7 +314,60 @@ This repo uses:
 ## Security Notes
 
 - Agent ↔ command-server uses **mTLS** for identity + transport security.
-- The HTTP API is currently **unauthenticated** (intended for development and private deployments).
+- The HTTP API uses **API key authentication** with role-based access control.
+
+---
+
+## API Authentication
+
+The command server HTTP API requires authentication via API keys.
+
+Add an `api` section to `configs/command-server.yaml`:
+
+```yaml
+api:
+  keys_file: "configs/api-keys.yaml"
+
+  # Set to true to disable authentication (development only!)
+  # allow_unauthenticated: true
+```
+
+On first startup, an admin API key is automatically generated and saved to the keys file. Retrieve it with:
+
+```bash
+cat configs/api-keys.yaml
+```
+
+### Using the API Key
+
+Via environment variable (recommended):
+
+```bash
+export GAMESVC_API_KEY="rpm_sk_..."
+gamesvcctl agents
+```
+
+Via CLI flag:
+
+```bash
+gamesvcctl --api-key "rpm_sk_..." agents
+```
+
+### Roles
+
+- **admin** - Full access (create, delete, start, stop, enable, disable, rename, params)
+- **read** - Read-only access (list agents, instances, templates, status)
+
+### API Keys File Format
+
+```yaml
+keys:
+  - name: admin
+    key: rpm_sk_...
+    roles:
+      - admin
+    created_at: 2026-01-24T00:00:00Z
+```
 
 ---
 
